@@ -2,6 +2,30 @@
 <html lang="en">
 
 <head>
+	<title>QTD3</title>
+	  <script>
+	    // SVG-only favicon: white "N" on hsl(219 100% 50%) background
+	    (function(){
+	      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="N">
+	        <rect width="100%" height="100%" fill="hsl(219 100% 50%)"/>
+	        <!-- left vertical bar -->
+	        <rect x="8" y="8" width="10" height="48" fill="#fff"/>
+	        <!-- diagonal stroke (slanted middle) -->
+	        <polygon points="18,8 30,8 46,56 34,56" fill="#fff"/>
+	        <!-- right vertical bar -->
+	        <rect x="46" y="8" width="10" height="48" fill="#fff"/>
+	      </svg>`; 
+	
+	      const urlx = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+	      document.querySelectorAll('link[rel~="icon"]').forEach(n => n.remove());
+	      const link = document.createElement('link');
+	      link.rel = 'icon';
+	      link.type = 'image/svg+xml';
+	      link.href = urlx;
+	      document.head.appendChild(link);
+	    })();
+	  </script>
+	
     <script>
         // This line declares a variable called "url" and assigns it a value of "Api_Endpoint_Url"
         // deployment remarks: 1.25 custom emailcc Kal and CJ
@@ -14,7 +38,7 @@
         //let url = "https://script.google.com/macros/s/AKfycbw15mK5uxYETdRb3iKUUULz_VDXtJCmCUvEdX36KYH5f69WIotk6ZVx039kmxXz9KY1OQ/exec";
 		//let url = "https://script.google.com/macros/s/AKfycbxUbORlCPRCtAxec2UAyusvSJ3mWyiu-HmFHOP2oToVGy4lyy-lvePBecvUxM5Frcwz-A/exec";
 		// deployment remarks: 3.1 new script
-		let url ="https://script.google.com/macros/s/AKfycbxIhPtOhiRMqBkhKEXQFnUFqqCRTyqnR5ifMxMd_Srpe7PvjZ24FlhwMLr1v92-IUTw/exec";
+		let url ="https://script.google.com/macros/s/AKfycbzEC80DjkJ5CKGo_VWPPugu2iasbKw2lTG_-TyDzhI8pXkgemOtanw_jgEyON4XVy0/exec";
 		let lastqtdaz = url;
 		
         let folder_sumatra = '18OLcLDIpnI7ErgJHgaS1DztCSXqt2L0b';
