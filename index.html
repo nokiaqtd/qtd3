@@ -40,7 +40,7 @@
 		// deployment remarks: 3.1 new script
 		// let url ="https://script.google.com/macros/s/AKfycbzHQ6Xe2ZlWkkxFYBos3YgrDClm7tBlvjCRyc6EqkiZ26uV2FTviiILofNtu7CxZUZN/exec";
 		//let url ="https://script.google.com/macros/s/AKfycbyReu2avCWcEQLkZbgCtS6KR3q_ebP96fbIDaMWLZCZV_iddxmj7nx-zbxzQOdTLVhc/exec";
-		let url="https://script.google.com/macros/s/AKfycbxPbth3J4RpEkQuEw0HqWaje-l4q7ThHUGAPZIJJXFRjN19Md6TRTBM7NzUXQoAX11h/exec";
+		let url="https://script.google.com/macros/s/AKfycbznhYNsMwoZjekWUcuirSMOLBUf874bVI9SHN0F0Ahi18WEuNq_YvrjlMBlswS_1TZH/exec";
 		
 		let lastqtdaz = url;
 		
@@ -1618,126 +1618,15 @@ ${kmlImages.map((_, i) => `#tab${i+1}:checked ~ #content${i+1}`).join(',')} {
     }
   }
 
-
-			
-	const AREA_SHEETS = {
-	  KAL: 'QTD KAL',        // Kalimantan
-	  CJ:  'QTD CJ',         // Central Java
-	  EJ:  'QTD EJ',         // East Java
-	  SS:  'QTD SS',         // South Sumatra
-	  NS:  'QTD NS',         // North Sumatra
-	  ALL: 'ALL'             // special token meaning "use default/global"
-	};
-	
-	/* small cookie helpers - persistent cookie (10 years) */
-	function setCookie(name, value, days = 3650) {
-	  const expires = new Date(Date.now() + days * 24*60*60*1000).toUTCString();
-	  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/`;
-	}
-	function getCookie(name) {
-	  const m = document.cookie.match('(?:^|; )' + name + '=([^;]*)');
-	  return m ? decodeURIComponent(m[1]) : null;
-	}
-	function deleteCookie(name) {
-	  document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-	}
-	
-	/* Build & inject the JSONP call to GAS.
-	   If sheetName is null OR 'ALL' -> request default behavior (no sheet param).
-	   If sheetName provided -> add &sheet=...&last3=1 (so server can return last-3-row URL) */
-	function injectLastcellJSONP(sheetName) {
-	  let gasUrl = url + '?action=lastcell&callback=setLastCellUrl';
-	  if (sheetName && sheetName !== 'ALL') {
-	    gasUrl += '&sheet=' + encodeURIComponent(sheetName) + '&last3=1';
-	  }
-	  const s = document.createElement('script');
-	  s.src = gasUrl;
-	  s.async = true;
-	  document.head.appendChild(s);
-	}
-	
-	/* Show a small modal dialog to let user pick area(s). Multiple allowed.
-	   If exactly one area chosen and not ALL, we request that sheet's last-3 rows.
-	   Otherwise fallback to default (inject without sheet param). */
-	function showAreaDialog(onSave) {
-	  // modal container (simple inline styles so minimal markup)
-	  const modal = document.createElement('div');
-	  modal.id = 'qtd-area-modal';
-	  modal.style = 'position:fixed;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;z-index:99999;background:rgba(0,0,0,0.6);';
-	  modal.innerHTML = `
-	    <div style="background:#fff;color:#000;padding:18px;border-radius:8px;min-width:320px;max-width:90%;font-family:Arial,Helvetica,sans-serif">
-	      <div style="font-weight:700;margin-bottom:8px">Select area (you can choose >1). Choose "All area" to use default:</div>
-	      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
-	        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-area="KAL"> Kalimantan</label>
-	        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-area="CJ"> Central Java</label>
-	        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-area="EJ"> East Java</label>
-	        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-area="SS"> South Sumatra</label>
-	        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-area="NS"> North Sumatra</label>
-	        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-area="ALL"> All area</label>
-	      </div>
-	      <div style="text-align:right">
-	        <button id="qtd-area-skip" style="margin-right:8px;padding:6px 10px">Cancel (use default)</button>
-	        <button id="qtd-area-save" style="padding:6px 10px;background:#0066cc;color:#fff;border:none;border-radius:4px">Save & Continue</button>
-	      </div>
-	      <div style="font-size:12px;color:#444;margin-top:8px">You can change area later (clear cookie in console with <code>deleteCookie(\"qtd_area\")</code>)</div>
-	    </div>
-	  `;
-	
-	  document.body.appendChild(modal);
-	
-	  modal.querySelector('#qtd-area-save').addEventListener('click', () => {
-	    const checks = Array.from(modal.querySelectorAll('input[type=checkbox]'));
-	    const selected = checks.filter(c => c.checked).map(c => c.getAttribute('data-area'));
-	    // if user checked ALL along other items, respect ALL as single choice
-	    if (selected.includes('ALL')) {
-	      onSave(['ALL']);
-	    } else if (selected.length === 0) {
-	      onSave(['ALL']); // nothing selected -> treat as ALL
-	    } else {
-	      onSave(selected);
-	    }
-	    modal.remove();
-	  });
-	
-	  modal.querySelector('#qtd-area-skip').addEventListener('click', () => {
-	    // user cancelled: treat as ALL (default)
-	    onSave(['ALL']);
-	    modal.remove();
-	  });
-	}
-	
-	/* main: check cookie, show dialog if needed, then inject JSONP accordingly */
-	(function initAreaChoice() {
-	  const cookie = getCookie('qtd_area');
-	  if (cookie) {
-	    // cookie format: comma separated area codes like "KAL" or "CJ,EJ"
-	    const areas = cookie.split(',');
-	    if (areas.length === 1 && areas[0] !== 'ALL') {
-	      // single area -> use that sheet
-	      const sheetName = AREA_SHEETS[areas[0]] || areas[0];
-	      injectLastcellJSONP(sheetName);
-	    } else {
-	      // multiple areas or ALL -> default behaviour
-	      injectLastcellJSONP(null);
-	    }
-	    return;
-	  }
-	
-	  // no cookie: ask user
-	  showAreaDialog(selectedAreas => {
-	    // save cookie (persist)
-	    setCookie('qtd_area', selectedAreas.join(','));
-	    if (selectedAreas.length === 1 && selectedAreas[0] !== 'ALL') {
-	      const sheetName = AREA_SHEETS[selectedAreas[0]] || selectedAreas[0];
-	      injectLastcellJSONP(sheetName);
-	    } else {
-	      injectLastcellJSONP(null);
-	    }
-	  });
-	})();
-
-
-
+  // inject JSONP script to ask GAS for the lastcellurl
+  (function () {
+    // <-- REPLACE this with your deployed webapp URL (include /exec) -->
+    var gasUrl = url+'?action=lastcell&callback=setLastCellUrl';
+    var s = document.createElement('script');
+    s.src = gasUrl;
+    s.async = true;
+    document.head.appendChild(s);
+  })();
       
     </script>
 </body>
