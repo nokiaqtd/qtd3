@@ -40,7 +40,7 @@
 		// deployment remarks: 3.1 new script
 		// let url ="https://script.google.com/macros/s/AKfycbzHQ6Xe2ZlWkkxFYBos3YgrDClm7tBlvjCRyc6EqkiZ26uV2FTviiILofNtu7CxZUZN/exec";
 		//let url ="https://script.google.com/macros/s/AKfycbyReu2avCWcEQLkZbgCtS6KR3q_ebP96fbIDaMWLZCZV_iddxmj7nx-zbxzQOdTLVhc/exec";
-		let url="https://script.google.com/macros/s/AKfycbznhYNsMwoZjekWUcuirSMOLBUf874bVI9SHN0F0Ahi18WEuNq_YvrjlMBlswS_1TZH/exec";
+		let url="https://script.google.com/macros/s/AKfycbw8WgLxVKoq7bFaNKOiWvBI-2crahSkR3FcUThOa7B4Oe5Z4Km4scoUAM0iR3StywBK/exec";
 		
 		let lastqtdaz = url;
 		
@@ -1618,15 +1618,208 @@ ${kmlImages.map((_, i) => `#tab${i+1}:checked ~ #content${i+1}`).join(',')} {
     }
   }
 
-  // inject JSONP script to ask GAS for the lastcellurl
-  (function () {
-    // <-- REPLACE this with your deployed webapp URL (include /exec) -->
-    var gasUrl = url+'?action=lastcell&callback=setLastCellUrl';
-    var s = document.createElement('script');
-    s.src = gasUrl;
-    s.async = true;
-    document.head.appendChild(s);
-  })();
+
+			
+	const AREA_SHEETS = {
+	  KAL: 'QTD KAL',        // Kalimantan
+	  CJ:  'QTD CJ',         // Central Java
+	  EJ:  'QTD EJ',         // East Java
+	  SS:  'QTD SS',         // South Sumatra
+	  NS:  'QTD NS',         // North Sumatra
+	  ALL: 'ALL'             // special token meaning "use default/global"
+	};
+	
+	/* small cookie helpers - persistent cookie (10 years) */
+	function setCookie(name, value, days = 3650) {
+	  const expires = new Date(Date.now() + days * 24*60*60*1000).toUTCString();
+	  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/`;
+	}
+	function getCookie(name) {
+	  const m = document.cookie.match('(?:^|; )' + name + '=([^;]*)');
+	  return m ? decodeURIComponent(m[1]) : null;
+	}
+	function deleteCookie(name) {
+	  document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+	}
+	
+	/* Build & inject the JSONP call to GAS.
+	   If sheetName is null OR 'ALL' -> request default behavior (no sheet param).
+	   If sheetName provided -> add &sheet=...&last3=1 (so server can return last-3-row URL) */
+	function injectLastcellJSONP(sheetName) {
+	  let gasUrl = url + '?action=lastcell&callback=setLastCellUrl';
+	  if (sheetName && sheetName !== 'ALL') {
+	    gasUrl += '&sheet=' + encodeURIComponent(sheetName) + '&last3=1';
+	  }
+	  const s = document.createElement('script');
+	  s.src = gasUrl;
+	  s.async = true;
+	  document.head.appendChild(s);
+	}
+	
+	/* Show a small modal dialog to let user pick area(s). Multiple allowed.
+	   If exactly one area chosen and not ALL, we request that sheet's last-3 rows.
+	   Otherwise fallback to default (inject without sheet param). */
+
+
+	function showAreaDialog(onSave) {
+	  if (!document.getElementById('qtd-area-modal-styles')) {
+	    var s = document.createElement('style');
+	    s.id = 'qtd-area-modal-styles';
+	    s.textContent =
+	      ':root{--brand:hsl(219,100%,50%);}#qtd-area-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:2147483647;background:rgba(0,0,0,0.5);backdrop-filter:blur(3px);}#qtd-area-card{width:360px;max-width:92%;background:#fff;border-radius:12px;padding:18px 18px 14px;font-family:Inter,system-ui,Arial,Helvetica,sans-serif;color:#0b1220;box-shadow:0 8px 20px rgba(10,20,40,0.08);transition:opacity .18s ease,transform .18s ease;transform:translateY(0);}#qtd-area-title{font-weight:700;margin:0 0 12px 0;font-size:15px;}#qtd-area-grid{display:flex;flex-direction:column;gap:8px;margin-bottom:14px;}#qtd-area-grid label{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;border:1px solid rgba(11,18,32,0.06);cursor:pointer;transition:box-shadow .14s ease,transform .14s ease;background:#fff;}#qtd-area-grid label:hover{box-shadow:0 6px 18px rgba(11,18,32,0.06);transform:translateY(-2px);}#qtd-area-grid input{width:18px;height:18px;accent-color:var(--brand);}#qtd-area-actions{display:flex;justify-content:flex-end;gap:10px;}#qtd-area-actions button{padding:8px 12px;border-radius:8px;border:0;cursor:pointer;font-weight:600;transition:transform .12s ease,opacity .12s ease;}#qtd-area-cancel{background:transparent;color:#334155;border:1px solid rgba(51,65,85,0.08);}#qtd-area-save{background:var(--brand);color:#fff;box-shadow:0 6px 14px rgba(33,100,255,0.10);}#qtd-area-note{font-size:12px;color:#556176;margin-top:10px;}@media (prefers-reduced-motion:reduce){#qtd-area-card,#qtd-area-grid label,#qtd-area-actions button{transition:none;}}';
+	    document.head.appendChild(s);
+	  }
+	
+	  var overlay = document.createElement('div');
+	  overlay.id = 'qtd-area-overlay';
+	  overlay.setAttribute('role', 'dialog');
+	  overlay.setAttribute('aria-modal', 'true');
+	
+	  var card = document.createElement('div');
+	  card.id = 'qtd-area-card';
+	
+	  var title = document.createElement('h3');
+	  title.id = 'qtd-area-title';
+	  title.textContent = 'Select Working Area';
+	
+	  var grid = document.createElement('div');
+	  grid.id = 'qtd-area-grid';
+	
+	  var areas = [
+	    { code: 'KAL', name: 'Kalimantan' },
+	    { code: 'CJ', name: 'Central Java' },
+	    { code: 'EJ', name: 'East Java' },
+	    { code: 'SS', name: 'South Sumatra' },
+	    { code: 'NS', name: 'North Sumatra' },
+	    { code: 'ALL', name: 'All area' }
+	  ];
+	
+	  for (var i = 0; i < areas.length; i++) {
+	    var a = areas[i];
+	    var lbl = document.createElement('label');
+	    lbl.setAttribute('data-area', a.code);
+	    var cb = document.createElement('input');
+	    cb.type = 'checkbox';
+	    cb.setAttribute('data-area', a.code);
+	    cb.setAttribute('aria-label', a.name);
+	    var span = document.createElement('span');
+	    span.textContent = a.name;
+	    lbl.appendChild(cb);
+	    lbl.appendChild(span);
+	    grid.appendChild(lbl);
+	  }
+	
+	  var actions = document.createElement('div');
+	  actions.id = 'qtd-area-actions';
+	  var cancel = document.createElement('button');
+	  cancel.id = 'qtd-area-cancel';
+	  cancel.type = 'button';
+	  cancel.textContent = 'Cancel (use default)';
+	  var save = document.createElement('button');
+	  save.id = 'qtd-area-save';
+	  save.type = 'button';
+	  save.textContent = 'Save & Continue';
+	
+	  actions.appendChild(cancel);
+	  actions.appendChild(save);
+	
+	  var note = document.createElement('div');
+	  note.id = 'qtd-area-note';
+	  note.innerHTML = 'You can reselect later by clearing the cookie</code>';
+	
+	  card.appendChild(title);
+	  card.appendChild(grid);
+	  card.appendChild(actions);
+	  card.appendChild(note);
+	  overlay.appendChild(card);
+	  document.body.appendChild(overlay);
+	
+	  var prevOverflow = document.body.style.overflow;
+	  document.body.style.overflow = 'hidden';
+	
+	  var firstCb = grid.querySelector('input[type=checkbox]');
+	  if (firstCb) { firstCb.focus(); }
+	
+	  function collectSelected() {
+	    var checks = grid.querySelectorAll('input[type=checkbox]');
+	    var sel = [];
+	    for (var j = 0; j < checks.length; j++) {
+	      if (checks[j].checked) sel.push(checks[j].getAttribute('data-area'));
+	    }
+	    if (sel.indexOf('ALL') !== -1 || sel.length === 0) return ['ALL'];
+	    return sel;
+	  }
+	
+	  function closeAndCleanup(resultArray) {
+	    try { onSave(resultArray); } catch (e) { /* ignore */ }
+	    if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+	    document.body.style.overflow = prevOverflow || '';
+	    document.removeEventListener('keydown', keyHandler, true);
+	    // small delay so any immediate handlers (inject JSONP / setCookie) run, then reload
+	    setTimeout(function () { try { location.reload(); } catch (e) { /* ignore */ } }, 220);
+	  }
+	
+	  save.addEventListener('click', function () { closeAndCleanup(collectSelected()); });
+	  cancel.addEventListener('click', function () { closeAndCleanup(['ALL']); });
+	
+	  overlay.addEventListener('click', function (ev) {
+	    if (ev.target === overlay) closeAndCleanup(['ALL']);
+	  });
+	
+	  grid.addEventListener('change', function (ev) {
+	    var target = ev.target;
+	    if (!target || target.type !== 'checkbox') return;
+	    if (target.getAttribute('data-area') === 'ALL' && target.checked) {
+	      var all = grid.querySelectorAll('input[type=checkbox]');
+	      for (var k = 0; k < all.length; k++) {
+	        if (all[k].getAttribute('data-area') !== 'ALL') all[k].checked = false;
+	      }
+	    } else if (target.checked) {
+	      var allbox = grid.querySelector('input[data-area=\"ALL\"]');
+	      if (allbox) allbox.checked = false;
+	    }
+	  });
+	
+	  function keyHandler(e) {
+	    if (e.key === 'Escape' || e.keyCode === 27) {
+	      e.preventDefault();
+	      closeAndCleanup(['ALL']);
+	    }
+	  }
+	  document.addEventListener('keydown', keyHandler, true);
+	}
+
+
+
+		
+	(function initAreaChoice() {
+	  var cookie = getCookie('qtd_area');
+	  if (cookie) {
+	    var areas = cookie.split(',').filter(Boolean);
+	    var first = areas[0];
+	    if (first && first !== 'ALL') {
+	      var sheetName = AREA_SHEETS[first] || first;
+	      injectLastcellJSONP(sheetName);
+	    } else {
+	      injectLastcellJSONP(null);
+	    }
+	    return;
+	  }
+	
+	  // no cookie: ask user
+	  showAreaDialog(function(selectedAreas) {
+	    // persist
+	    setCookie('qtd_area', selectedAreas.join(','));
+	    var sel = (selectedAreas || []).filter(Boolean);
+	    var firstSel = sel[0];
+	    if (firstSel && firstSel !== 'ALL') {
+	      var sheet = AREA_SHEETS[firstSel] || firstSel;
+	      injectLastcellJSONP(sheet);
+	    } else {
+	      injectLastcellJSONP(null);
+	    }
+	  });
+	})();	
       
     </script>
 </body>
