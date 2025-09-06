@@ -40,7 +40,7 @@
 		// deployment remarks: 3.1 new script
 		// let url ="https://script.google.com/macros/s/AKfycbzHQ6Xe2ZlWkkxFYBos3YgrDClm7tBlvjCRyc6EqkiZ26uV2FTviiILofNtu7CxZUZN/exec";
 		//let url ="https://script.google.com/macros/s/AKfycbyReu2avCWcEQLkZbgCtS6KR3q_ebP96fbIDaMWLZCZV_iddxmj7nx-zbxzQOdTLVhc/exec";
-		let url="https://script.google.com/macros/s/AKfycbzr7VX9budtlCPp5pmyqHz7VfDC7-JcExc4bRzqUxB_4A7t-IeXY3Rm6aVYDh0BQrSw/exec";
+		let url="https://script.google.com/macros/s/AKfycbx9XIxZUWkN85duC7IB-2HnX3khkbQ-1H1_y0x-GHKDBC6sQUPI85sdm43967IzeDlJ/exec";
 		
 		let lastqtdaz = url;
 		
@@ -555,6 +555,103 @@
         }
     </style>
 
+	<style>
+	  .azmt-input {
+/* 	    display: none;              */
+	    box-sizing: content-box;     /* we size by ch units */
+	    padding: 6px;
+	    font-size: 13px;
+	    border-radius: 4px;
+	    border: 1px solid #ccc;
+	    min-width: 3ch;              /* smallest width */
+	    line-height: 1;
+	    vertical-align: middle;
+	    margin-right: 6px;
+	  }
+	
+	  /* optional: slightly different min-width for inputyx (lat lon) */
+	  #inputyx.azmt-input { min-width: 17ch; }
+
+		/* split gallery + resizer */
+		.gallery-split{display:flex;gap:8px;height:80vh;align-items:stretch}
+		.gallery-left{width:45%;min-width:220px;max-width:75%}
+		.gallery-left iframe{width:100%;height:100%;border:0;display:block}
+		#galleryResizer{width:8px;cursor:col-resize;background:rgba(0,0,0,0.06)}
+		.gallery-right{flex:1 1 0;min-width:300px;overflow:auto}
+		/* footer area below the split that will hold caption-container + thumbnails */
+		.gallery-bottom { margin-top: 8px; padding: 6px 0; width: 100%; box-sizing: border-box; }
+
+
+		/* ---- QTD toaster (top-center) ---- */
+		#qtd-toast {
+		  position: fixed;
+		  top: 12px;
+		  left: 50%;
+		  transform: translateX(-50%) translateY(-200%);
+		  z-index: 99999;
+		  min-width: 240px;
+		  max-width: 90vw;
+		  padding: 12px 18px;
+		  border-radius: 10px;
+		  color: white;
+		  font-weight: 600;
+		  text-align: center;
+		  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+		  opacity: 0;
+		  pointer-events: none;
+		  will-change: transform, opacity;
+		}
+
+		/* success / error colours */
+		#qtd-toast.qtd-success { background: linear-gradient(180deg, #29a745, #22863a); }
+		#qtd-toast.qtd-error   { background: linear-gradient(180deg, #d64545, #b33434); }
+
+		/* entrance animation (drop with soft elastic/overshoot) */
+		@keyframes qtd-toast-drop {
+		  0%   { transform: translateX(-50%) translateY(-220%) scale(0.95); opacity: 0; }
+		  60%  { transform: translateX(-50%) translateY(10px) scale(1.03); opacity: 1; }
+		  80%  { transform: translateX(-50%) translateY(-6px) scale(0.995); opacity: 1; }
+		  100% { transform: translateX(-50%) translateY(0) scale(1); opacity: 1; }
+		}
+
+		/* hide animation: move up and fade out */
+		@keyframes qtd-toast-upfade {
+		  0%   { transform: translateX(-50%) translateY(0); opacity: 1; }
+		  100% { transform: translateX(-50%) translateY(-48px); opacity: 0; }
+		}
+
+		/* utility classes applied from JS */
+		#qtd-toast.qtd-show { animation: qtd-toast-drop 700ms cubic-bezier(.22,1.4,.33,1) forwards; pointer-events:auto; }
+		#qtd-toast.qtd-hide { animation: qtd-toast-upfade 700ms ease-in forwards; pointer-events:none; }
+
+		/* small text wrap/tidy */
+		#qtd-toast .qtd-msg { display:block; font-size:14px; line-height:1.2; word-break:break-word; white-space:normal; }
+
+		/* Inputs start hidden and animate into view when caption1 div gets class `qtd-inputs-visible` */
+		#caption1 > div .azmt-input {
+		  display: none;                /* hidden initially */
+		  opacity: 0;
+		  transform: translateY(-6px);
+		  transition: opacity 240ms ease, transform 240ms ease;
+		  pointer-events: none;
+		}
+
+		/* When wrapper gets this class, inputs that are set to display:inline-block (by JS or previous logic)
+		   will animate from the above state into visible state. */
+		#caption1 > div.qtd-inputs-visible .azmt-input {
+		  /* JS will set element.style.display='inline-block' for inputs with value.
+			 The CSS below drives the animation */
+		  opacity: 1;
+		  transform: translateY(0);
+		  pointer-events: auto;
+		}
+
+		/* keep apply button layout unchanged; it sits next to downloadKMLBtn as before */
+		#caption1 > div button { vertical-align: middle; }
+			
+			
+	</style>
+		
 </head>
 
 <body>
@@ -627,6 +724,145 @@
     </div>
 
     <script>
+
+// Auto-fit helper (ES5). Paste once in your script (global scope).
+		(function () {
+		  if (window.__qtdMapAutoFit) return;
+		  window.__qtdMapAutoFit = {
+			state: null
+		  };
+
+		  function measureAndShow(target, siteid) {
+			try {
+			  var r = target.getBoundingClientRect();
+			  var w = Math.max(1, Math.round(r.width));
+			  var h = Math.max(1, Math.round(r.height));
+			  window.__qtdPersistentMap.showAtRect({
+				left: Math.round(r.left),
+				top: Math.round(r.top),
+				width: w,
+				height: h
+			  }, siteid);
+			} catch (e) { console.warn('measureAndShow failed', e); }
+		  }
+
+		  window.startMapAutoFit = function (targetEl, siteid) {
+			try {
+			  if (!targetEl || !window.__qtdPersistentMap) return;
+			  // stop previous if any
+			  window.stopMapAutoFit();
+
+			  // immediate show
+			  measureAndShow(targetEl, siteid);
+
+			  var ro = null, mo = null, onResize = null;
+
+			  // ResizeObserver if available
+			  if (typeof window.ResizeObserver === 'function') {
+				ro = new ResizeObserver(function () {
+				  // batch layout reads
+				  requestAnimationFrame(function () { measureAndShow(targetEl, siteid); });
+				});
+				try { ro.observe(targetEl); } catch (e) { ro = null; }
+			  } else {
+				// fallback: window resize
+				onResize = function () { requestAnimationFrame(function () { measureAndShow(targetEl, siteid); }); };
+				window.addEventListener('resize', onResize);
+			  }
+
+			  // MutationObserver to detect subtree/content changes (helps older browsers)
+			  try {
+				if (typeof window.MutationObserver === 'function') {
+				  mo = new MutationObserver(function () {
+					requestAnimationFrame(function () { measureAndShow(targetEl, siteid); });
+				  });
+				  mo.observe(targetEl, { childList: true, subtree: true, attributes: true });
+				}
+			  } catch (e) { mo = null; }
+
+			  window.__qtdMapAutoFit.state = { target: targetEl, ro: ro, mo: mo, onResize: onResize };
+			} catch (err) { console.warn('startMapAutoFit error', err); }
+		  };
+
+		  window.stopMapAutoFit = function () {
+			try {
+			  var s = window.__qtdMapAutoFit.state;
+			  if (!s) return;
+			  if (s.ro && typeof s.ro.disconnect === 'function') try { s.ro.disconnect(); } catch (e) {}
+			  if (s.mo && typeof s.mo.disconnect === 'function') try { s.mo.disconnect(); } catch (e) {}
+			  if (s.onResize) try { window.removeEventListener('resize', s.onResize); } catch (e) {}
+			  window.__qtdMapAutoFit.state = null;
+			} catch (err) { console.warn('stopMapAutoFit error', err); }
+		  };
+		})();
+
+
+		(function ensurePersistentMapOnce() {
+		  if (window.__qtdPersistentMap) return;
+		  // create holder outside overlay so overlay DOM swaps never touch iframe
+		  var holder = document.createElement('div');
+		  holder.id = 'qtd-persistent-map-holder';
+		  holder.style.position = 'fixed';
+		  holder.style.left = '0px';
+		  holder.style.top = '0px';
+		  holder.style.width = '0px';
+		  holder.style.height = '0px';
+		  holder.style.zIndex = '9998';
+		  holder.style.display = 'none';
+		  holder.style.background = 'transparent';
+		  // append immediately
+		  (document.body || document.documentElement).appendChild(holder);
+
+		  var iframe = document.createElement('iframe');
+		  iframe.id = 'persistentMapFrame';
+		  iframe.allow = 'geolocation; microphone; camera; accelerometer; gyroscope; autoplay';
+		  iframe.style.width = '100%';
+		  iframe.style.height = '100%';
+		  iframe.style.border = '0';
+		  // load base map once (do not change src later)
+		  iframe.src = 'https://nokiaqtd.github.io/map';
+		  // optional ready flag
+		  iframe.addEventListener('load', function () {
+			iframe.dataset.ready = '1';
+			try { console.debug('persistentMapFrame loaded (once):', iframe.src); } catch (e) {}
+		  }, false);
+
+		  holder.appendChild(iframe);
+
+		  // public API to show/hide and set site via postMessage
+		  window.__qtdPersistentMap = {
+			holder: holder,
+			iframe: iframe,
+			showAtRect: function (rect, siteid) {
+			  // rect: {left, top, width, height} in viewport coords
+			  holder.style.left = (rect.left | 0) + 'px';
+			  holder.style.top = (rect.top | 0) + 'px';
+			  holder.style.width = (rect.width | 0) + 'px';
+			  holder.style.height = (rect.height | 0) + 'px';
+			  holder.style.zIndex = 9998;
+			  holder.style.display = 'block';
+			  try {
+				if (iframe.contentWindow && typeof iframe.contentWindow.postMessage === 'function') {
+				  iframe.contentWindow.postMessage({ type: 'setSite', siteid: siteid }, '*');
+				  iframe.dataset.lastSite = siteid || '';
+				}
+			  } catch (e) { console.warn('postMessage failed', e); }
+			},
+			hide: function () {
+			  holder.style.display = 'none';
+			}
+		  };
+		})();
+
+
+		function autoResizeInput(input) {
+		  // +1 so it never fully collapses
+		  input.style.width = (input.value.length + 1) + "ch";
+		}
+		
+
+
+		
 		let currentGalleryIndex = 0; // to remember the last opened index
 		
         var spanElement = document.getElementById("nokia");
@@ -731,7 +967,7 @@
                 searchResult.innerHTML = "\nSearching.. <i>" + duration + " sec</i>";
             }
 
-            // alert("Searching...");
+            
 
 
 
@@ -863,7 +1099,7 @@
                     console.error("Error:", error);
                     // Handle errors if the request fails
                 });
-            // alert("Searching done...");
+            
 
         }
 
@@ -925,182 +1161,846 @@
         }
 
 
-function createGalery() {
-    // 1. Render slideshow exactly as before
-    let template = `
-<div class="container">
-{slides}
-<a class="prev" onclick="plusSlides(-1)">❮</a>
-<a class="next" onclick="plusSlides(1)">❯</a>
-</div>
-<div class="caption-container">
-    <span id="caption1"></span><span id="caption"></span><h2 style="text-align:center">{site}</h2>
-</div>
-<div class="container">
-  <div class="row">
-    {thumbnails}
-  </div>
-</div>
-`;
 
-    let slidesHTML = "";
-    let thumbnailsHTML = "";
-    let placemarkName = resArr[0].site;            // e.g. "20SAG0132_2025709"
-    let rawSiteid     = placemarkName.split("_")[0]; // e.g. "20SAG0132"
+		
+		function createGalery() {
+		    // 1. Render slideshow exactly as before
+		    let template = `
+		<div class="container">
+		{slides}
+		<a class="prev" onclick="plusSlides(-1)">❮</a>
+		<a class="next" onclick="plusSlides(1)">❯</a>
+		</div>
+		<div class="caption-container">
+		    <span id="caption1"></span><span id="caption"></span><h2 style="text-align:center">{site}</h2>
+		</div>
+		<div class="container">
+		  <div class="row">
+		    {thumbnails}
+		  </div>
+		</div>
+		`;
+		
+		    let slidesHTML = "";
+		    let thumbnailsHTML = "";
+		    let placemarkName = resArr[0].site;            // e.g. "20SAG0132_2025709"
+		    let rawSiteid     = placemarkName.split("_")[0]; // e.g. "20SAG0132"
+		
+		    resArr.forEach((obj, index) => {
+		        slidesHTML += `
+		<div class="mySlides">
+		  <div class="numbertext">${index + 1} / ${resArr.length}</div>
+		  <img src="${obj.url}">
+		</div>`;
+		        thumbnailsHTML += `
+		<div class="column">
+		  <img class="demo cursor" src="${obj.url}" style="width:100%" onclick="currentSlide(${index + 1})" alt="${obj.name}">
+		  <div class="tooltip">${obj.name}</div>
+		</div>`;
+		    });
+		
 
-    resArr.forEach((obj, index) => {
-        slidesHTML += `
-<div class="mySlides">
-  <div class="numbertext">${index + 1} / ${resArr.length}</div>
-  <img src="${obj.url}">
-</div>`;
-        thumbnailsHTML += `
-<div class="column">
-  <img class="demo cursor" src="${obj.url}" style="width:100%" onclick="currentSlide(${index + 1})" alt="${obj.name}">
-  <div class="tooltip">${obj.name}</div>
-</div>`;
-    });
+			// safer DOM replace (no moving/attaching iframe here)
+			var overlayEl = document.querySelector('.overlay-content');
+			if (!overlayEl) {
+			  console.warn('createGalery: overlay-content not found');
+			} else {
+			  var htmlText = template
+				.replace("{site}", placemarkName)
+				.replace("{slides}", slidesHTML)
+				.replace("{thumbnails}", thumbnailsHTML);
+			  var fragment = document.createRange().createContextualFragment(htmlText);
+			  overlayEl.replaceChildren(fragment);
+			  console.debug('overlay-content replaced via fragment for', placemarkName);
+			  // NOTE: we no longer move or touch persistentMapFrame here. positioning is done by wrapGalleryWithMap.
+			}
+			
 
-    document.querySelector(".overlay-content").innerHTML = template
-      .replace("{site}", placemarkName)
-      .replace("{slides}", slidesHTML)
-      .replace("{thumbnails}", thumbnailsHTML);
 
-    // 2. Lookup in updatedMixed for coordinates & az entries
-    const row = updatedMixed.find(r => r[0] === rawSiteid) || [];
-    const [ , longitude = "", latitude = "", ...azPairs ] = row;
+		    // 2. Lookup in updatedMixed for coordinates & az entries
+		    const row = updatedMixed.find(r => r[0] === rawSiteid) || [];
+		    const [ , longitude = "", latitude = "", ...azPairs ] = row;
+		
+		    // Build kmlImages from azPairs (name, url alternating)
+		    const kmlImages = [];
+		    for (let i = 0; i < azPairs.length; i += 2) {
+		      const name = azPairs[i];
+		      const url  = azPairs[i + 1];
+			  if (name && url && !/w/i.test(name)) {
+				kmlImages.push({ name, url });
+			  }
+		  
+		    }
+		
+			// Step 2b: Concatenate only names without 'v' or 'w' (case-insensitive)
+			const nameList = kmlImages
+			  .filter(item => !/[vw]/i.test(item.name))
+			  .map(item => {
+				const parts = item.name.split('=');
+				return parts.length > 1 ? parts[1] : ''; // extract right side of '='
+			  })
+			  .filter(Boolean) // remove empty strings
+			  .join(' ');
+		
+		    // 3. Inject & style the KML button    
+			const caption1 = document.getElementById("caption1");
+			caption1.innerHTML = `
+			  <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;">
+			    <button id="downloadKMLBtn" style="
+			      padding:8px 16px;
+			      background-color:#0066cc;
+			      color:white;
+			      border:none;
+			      border-radius:5px;
+			      cursor:pointer;
+			      font-size:14px;
+			      transition:background-color 0.2s ease;">
+			      KML ${rawSiteid}
+			    </button>
+			
+			    <!-- combined lat lon input -->
+			    
+				<input id="inputrows" placeholder="rows" title="rows" style="display:none;"> 
+				
+				<input id="inputyx" class="azmt-input" placeholder="lat lon (H I)" title="Column H (lat) and I (lon) combined">
+				
+				<input id="inputaz1" class="azmt-input" placeholder="az1 (G)" title="Column G - az1">
+				<input id="inputaz2" class="azmt-input" placeholder="az2 (G)" title="Column G - az2">
+				<input id="inputaz3" class="azmt-input" placeholder="az3 (G)" title="Column G - az3">
+				<input id="inputaz4" class="azmt-input" placeholder="az4 (G)" title="Column G - az4">
+				
+				<input id="inputmt1" class="azmt-input" placeholder="mt1 (F)" title="Column F - mt1">
+				<input id="inputmt2" class="azmt-input" placeholder="mt2 (F)" title="Column F - mt2">
+				<input id="inputmt3" class="azmt-input" placeholder="mt3 (F)" title="Column F - mt3">
+				<input id="inputmt4" class="azmt-input" placeholder="mt4 (F)" title="Column F - mt4">
+		
+			    <!-- Apply starts disabled/loading until populate finishes -->
+			    <button id="applyAzBtn" disabled style="padding:6px 10px;border-radius:5px;background:#888;color:#fff;border:none;cursor:not-allowed;font-size:13px;">
+			      Loading...
+			    </button>
+			  </div>
+			`;
+		
+		
+		
+		    const btn = document.getElementById('downloadKMLBtn');
+		    btn.addEventListener("mouseenter", () => btn.style.backgroundColor = "#004c99");
+		    btn.addEventListener("mouseleave", () => btn.style.backgroundColor = "#0066cc");
+		    btn.addEventListener("mousedown", () => btn.style.backgroundColor = "#003d80");
+		    btn.addEventListener("mouseup", () => btn.style.backgroundColor = "#004c99");
 
-    // Build kmlImages from azPairs (name, url alternating)
-    const kmlImages = [];
-    for (let i = 0; i < azPairs.length; i += 2) {
-      const name = azPairs[i];
-      const url  = azPairs[i + 1];
-	  if (name && url && !/w/i.test(name)) {
-		kmlImages.push({ name, url });
-	  }
-  
-    }
+			
+			// populate inputs from GAS (same endpoint used elsewhere: lastqtdaz / url)
+			(async function populateAndWire() {
+			  try {
+			    const applyBtn = document.getElementById('applyAzBtn');
 
-	// Step 2b: Concatenate only names without 'v' or 'w' (case-insensitive)
-	const nameList = kmlImages
-	  .filter(item => !/[vw]/i.test(item.name))
-	  .map(item => {
-		const parts = item.name.split('=');
-		return parts.length > 1 ? parts[1] : ''; // extract right side of '='
-	  })
-	  .filter(Boolean) // remove empty strings
-	  .join(' ');
+				Array.prototype.forEach.call(document.querySelectorAll('.azmt-input'), function(input){
+				  autoResizeInput(input);
+				  input.addEventListener('input', function(){ autoResizeInput(input); });
+				});
+				  
+			    // store original style/text to restore later
+				const origApplyText = 'Apply';
+				const origApplyBg = '#008000';
+				const origApplyCursor = 'pointer';
+			
+			    // ensure button is disabled + loading state while fetching
+			    if (applyBtn) {
+			      applyBtn.disabled = true;
+			      applyBtn.style.backgroundColor = '#888';
+			      applyBtn.style.cursor = 'not-allowed';
+			      applyBtn.textContent = 'Loading...';
+			    }
+			
+			    // request server for this siteid's saved values
+			    const resp = await fetch(lastqtdaz, {
+			      method: 'POST',
+			      headers: { 'Content-Type': 'text/plain' },
+			      body: JSON.stringify({ siteid: rawSiteid })
+			    });
+			
+			    let data;
+			    try {
+			      data = await resp.json();
+			    } catch (e) {
+			      // if not JSON, try text
+			      const t = await resp.text();
+			      try { data = JSON.parse(t); } catch (ee) { data = {}; }
+			    }
+			
+			    // tolerant helpers to find lat/lon and columns
+			    const setIf = (id, v) => {
+			      const el = document.getElementById(id);
+			      if (el) el.value = (v === undefined || v === null) ? '' : String(v);
+			    };
+			
+			    // Extract list helper (separate for AZ (G) and MT (F))
+			    function extractListFrom(obj, colKeys) {
+			      if (!obj) return [];
+			      if (typeof obj === 'string') {
+			        if (obj.includes(';')) return obj.split(';').map(s => s.trim()).filter(Boolean);
+			        return [obj.trim()].filter(Boolean);
+			      }
+			      for (const k of colKeys) {
+			        if (obj[k] && typeof obj[k] === 'string') {
+			          if (obj[k].includes(';')) return obj[k].split(';').map(s => s.trim()).filter(Boolean);
+			          if (obj[k].trim() !== '') return [obj[k].trim()];
+			        }
+			      }
+			      // az1/az2 etc
+			      const azKeys = Object.keys(obj).filter(k => /^az/i.test(k)).sort();
+			      if (azKeys.length) return azKeys.map(k => String(obj[k] || '').trim()).filter(Boolean);
+			      // rows array
+			      if (Array.isArray(obj.rows) && obj.rows.length) {
+			        const res = [];
+			        for (const r of obj.rows) {
+			          for (const k of colKeys) {
+			            if (r[k]) {
+			              if (String(r[k]).includes(';')) {
+			                res.push(...String(r[k]).split(';').map(s => s.trim()).filter(Boolean));
+			              } else {
+			                res.push(String(r[k]).trim());
+			              }
+			            }
+			          }
+			        }
+			        return res;
+			      }
+			      return [];
+			    }
+			
+			    // AZ candidates from column G
+			    const azCandidates = extractListFrom(data, ['G','g','az','AZ','Az']);
+			    // MT candidates from column F (IMPORTANT: separate extraction)
+			    const mtCandidates = extractListFrom(data, ['F','f','mt','MT','Mt']);
+			
+			    // fallback: if rows provided as array-of-rows structure with explicit G/F properties
+			    // (this is covered above in extractListFrom using rows but left as extra guard)
+			    if ((!azCandidates || azCandidates.length === 0) && Array.isArray(data.rows) && data.rows.length) {
+			      for (const r of data.rows) {
+			        if (r.G) azCandidates.push(String(r.G).trim());
+			      }
+			    }
+			    if ((!mtCandidates || mtCandidates.length === 0) && Array.isArray(data.rows) && data.rows.length) {
+			      for (const r of data.rows) {
+			        if (r.F) mtCandidates.push(String(r.F).trim());
+			      }
+			    }
+			
+			    // set combined lat/lon if present separately in data
+			
+			    // set combined lat/lon if present separately in data (prefer explicit fields)
+			    const possibleLat = data.latitude || data.lat || data.LATITUDE || data.H || data.h || '';
+			    const possibleLon = data.longitude || data.lon || data.LONGITUDE || data.I || data.i || '';
+			
+			    if (possibleLat || possibleLon) {
+			      // prefer returned latitude/longitude if provided
+			      setIf('inputyx', (possibleLat || '') + (possibleLat && possibleLon ? ' ' : '') + (possibleLon || ''));
+			    } else {
+			      // fallback: combined field
+			      const combined = data.latlon || data.lat_lon || data['H;I'] || '';
+			      if (combined) setIf('inputyx', combined);
+			    }
+			
+			    // Prefer explicit az1..az4 and mt1..mt4 from server response; fall back to azCandidates / mtCandidates
+			    for (let i = 1; i <= 4; i++) {
+			      const azKey = 'az' + i;
+			      const mtKey = 'mt' + i;
+			      const azVal = (data[azKey] !== undefined && data[azKey] !== null && String(data[azKey]).trim() !== '') ?
+			                    String(data[azKey]).trim() : (azCandidates[i - 1] || '');
+			      const mtVal = (data[mtKey] !== undefined && data[mtKey] !== null && String(data[mtKey]).trim() !== '') ?
+			                    String(data[mtKey]).trim() : (mtCandidates[i - 1] || '');
+			      setIf('inputaz' + i, azVal);
+			      setIf('inputmt' + i, mtVal);
+			    }
+			
+			    // Show / hide inputs 2..4 individually depending on whether they have values
+			    ['2','3','4'].forEach(n => {
+			      const azEl = document.getElementById('inputaz' + n);
+			      const mtEl = document.getElementById('inputmt' + n);
+			      if (azEl) azEl.style.display = (azEl.value && azEl.value.trim() !== '') ? 'inline-block' : 'none';
+			      if (mtEl) mtEl.style.display = (mtEl.value && mtEl.value.trim() !== '') ? 'inline-block' : 'none';
+			    });
+			
+			    // create (if missing) a hidden input 'inputrows' and set it to rows joined by ';'
+			    let inputRowsEl = document.getElementById('inputrows');
+			    if (!inputRowsEl) {
+			      inputRowsEl = document.createElement('input');
+			      inputRowsEl.type = 'hidden';
+			      inputRowsEl.id = 'inputrows';
+			      // append hidden input near caption1 so it travels with the gallery/controls
+			      const caption1Node = document.getElementById('caption1') || document.getElementById('caption');
+			      if (caption1Node) caption1Node.appendChild(inputRowsEl);
+			      else document.body.appendChild(inputRowsEl);
+			    }
+			    if (Array.isArray(data.rows)) {
+			      inputRowsEl.value = data.rows.join(';');
+			    } else if (typeof data.rows === 'string') {
+			      inputRowsEl.value = data.rows;
+			    } else {
+			      inputRowsEl.value = '';
+			    }
+			
+			    // ensure inputs 2..4 toggle visibility on manual edit as well
+			    ['inputaz2','inputaz3','inputaz4','inputmt2','inputmt3','inputmt4'].forEach(id=>{
+			      const el = document.getElementById(id);
+			      if (!el) return;
+			      // avoid adding duplicate listeners: remove old then add new by cloning node
+			      const clone = el.cloneNode(true);
+			      el.parentNode.replaceChild(clone, el);
+			      clone.addEventListener('input', () => {
+			        clone.style.display = (clone.value && clone.value.trim() !== '') ? 'inline-block' : 'none';
+			      });
+			    });
+								  
+				// // after populating values from server:
+				// attachResizers(['inputyx','inputaz1','inputaz2','inputaz3','inputaz4',
+				//                'inputmt1','inputmt2','inputmt3','inputmt4']);
+				
+				// // reveal inputs (shows only inputs that have non-empty value)
+				// revealInputs(newApply); 
+								  
+				  
+			    // restore apply button to ready state
+			    if (applyBtn) {
+				  applyBtn.disabled = false;
+				  applyBtn.style.backgroundColor = origApplyBg;
+				  applyBtn.style.cursor = origApplyCursor;
+				  applyBtn.textContent = origApplyText;
+				  // revealInputs(newApply);
+				  
+					// after you've set all .azmt-input values
+					var inputs = document.querySelectorAll('.azmt-input');
+					for (var i = 0; i < inputs.length; i++) {
+					  var e = document.createEvent('Event');
+					  e.initEvent('input', true, true);
+					  inputs[i].dispatchEvent(e);
+					}		
 
-    // 3. Inject & style the KML button
-    const caption1 = document.getElementById("caption1");
-	caption1.innerHTML = `
-	  <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;">
-		<button id="downloadKMLBtn" style="
-		  padding: 8px 16px;
-		  background-color: #0066cc;
-		  color: white;
-		  border: none;
-		  border-radius: 5px;
-		  cursor: pointer;
-		  font-size: 14px;
-		  transition: background-color 0.2s ease;
-		">
-		  KML ${rawSiteid}
-		</button>
-		<span style="font-size: 14px; color: white;">${nameList}</span>
-	  </div>
-	`;
+					// --- reveal: always show certain inputs even if empty, then show other non-empty inputs ---
+					try {
+					  var captionDiv = document.querySelector('#caption1 > div');
+					  if (captionDiv) {
+						captionDiv.classList.add('qtd-inputs-visible');
 
-    const btn = document.getElementById('downloadKMLBtn');
-    btn.addEventListener("mouseenter", () => btn.style.backgroundColor = "#004c99");
-    btn.addEventListener("mouseleave", () => btn.style.backgroundColor = "#0066cc");
-    btn.addEventListener("mousedown", () => btn.style.backgroundColor = "#003d80");
-    btn.addEventListener("mouseup", () => btn.style.backgroundColor = "#004c99");
+						// Always-show these inputs even when blank (update IDs if yours differ)
+						var alwaysShowIds = ['inputyx','inputaz1','inputmt1'];
+						for (var j = 0; j < alwaysShowIds.length; j++) {
+						  var id = alwaysShowIds[j];
+						  var elA = document.getElementById(id);
+						  if (elA) {
+							elA.style.display = 'inline-block';
+							try {
+							  var evA = document.createEvent('Event');
+							  evA.initEvent('input', true, true);
+							  elA.dispatchEvent(evA);
+							} catch (eA) {}
+						  }
+						}
 
-    // 4. Generate KML on click
-    btn.addEventListener('click', function () {
-        const kmlContent = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Placemark>
-    <name>${rawSiteid}</name>
-    <Style>
-      <IconStyle>
-		<color>ff55ffff</color>
-        <scale>1.0</scale>
-        <Icon>
-          <href>http://maps.google.com/mapfiles/kml/shapes/donut.png</href>
-        </Icon>
-      </IconStyle>
-      <LabelStyle>
-		<color>ffffff7f</color>
-        <scale>0.7</scale>
-      </LabelStyle>
-    </Style>	
-    <description><![CDATA[
-<style>
-.tab-container { width:800px; font-family:Arial,sans-serif; text-align:center; }
-.tab-container input { display:none; }
-.tab-links { background:white; padding:5px; text-align:center; }
-.tab-container label {
-  display:inline-block; padding:0 8px; color:#0066cc;
-  text-decoration:underline; cursor:pointer; font-size:14px;
-}
-.tab-container label:hover { text-decoration:none; }
-.tab-container .tab-content {
-  display:none; border-top:1px solid #ccc; margin:10px 0;
-}
-.tab-container input:checked + label { font-weight:bold; text-decoration:none; }
-${kmlImages.map((_, i) => `#tab${i+1}:checked ~ #content${i+1}`).join(',')} {
-  display:block;
-}
-.tab-container img { display:block; margin:0 auto; width:100%; height:auto; }
-</style>
+						// Then handle all other .azmt-inputs (show only if non-empty)
+						var inputs = captionDiv.querySelectorAll('.azmt-input');
+						for (var i = 0; i < inputs.length; i++) {
+						  var el = inputs[i];
+						  // skip already-handled always-show inputs
+						  var sid = el.id || '';
+						  if (sid === 'inputyx' || sid === 'inputaz1' || sid === 'inputmt1') continue;
 
-<div class="tab-container">
-  ${kmlImages.map((_, i) =>
-    `<input type="radio" id="tab${i+1}" name="tabs" ${i===0?'checked':''}>`
-  ).join("\n")}
-  <div class="tab-links">
-    ${kmlImages.map((img, i) =>
-      `<label for="tab${i+1}">${img.name}</label>${i<kmlImages.length-1?" | ":""}`
-    ).join("\n")}
-  </div>
-  ${kmlImages.map((img, i) => `
-  <div id="content${i+1}" class="tab-content">
-    <img src="${img.url}">
-    <div class="tab-links">
-      ${kmlImages.map((inner, j) =>
-        `<label for="tab${j+1}">${inner.name}</label>${j<kmlImages.length-1?" | ":""}`
-      ).join("\n")}
-    </div>
-  </div>`).join("\n")}
-</div>
-    ]]></description>
-    <Point>
-      <coordinates>${longitude},${latitude},0</coordinates>
-    </Point>
-  </Placemark>
-</kml>`;
+						  var has = el.value && String(el.value).trim() !== '';
+						  if (has) {
+							el.style.display = 'inline-block';
+							try {
+							  var ev = document.createEvent('Event');
+							  ev.initEvent('input', true, true);
+							  el.dispatchEvent(ev);
+							} catch (e) {}
+						  } else {
+							el.style.display = 'none';
+						  }
+						}
 
-        const blob = new Blob([kmlContent], { type: 'application/vnd.google-earth.kml+xml' });
-        const url = URL.createObjectURL(blob);
+						// force reflow to reliably kick off transitions
+						void captionDiv.offsetWidth;
+					  }
+					} catch (errReveal) {
+					  console.warn('reveal inputs failed', errReveal);
+					}					
+			    }
+			
 
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `${placemarkName}.kml`;
-        link.click();
-        URL.revokeObjectURL(url);
-    });
-}
+				// ---- toaster helper: showToastAndClose(message, success) ----
+				function showToastAndClose(message, success) {
+				  // reuse existing toast element if present
+				  let toast = document.getElementById('qtd-toast');
+				  if (!toast) {
+					toast = document.createElement('div');
+					toast.id = 'qtd-toast';
+					toast.innerHTML = '<span class="qtd-msg"></span>';
+					document.body.appendChild(toast);
+				  }
+				  const msgEl = toast.querySelector('.qtd-msg');
+				  msgEl.textContent = message || '';
+
+				  // apply classes
+				  toast.classList.remove('qtd-success','qtd-error','qtd-show','qtd-hide');
+				  toast.classList.add(success ? 'qtd-success' : 'qtd-error');
+
+				  // force reflow then start entrance animation
+				  void toast.offsetWidth;
+				  toast.classList.add('qtd-show');
+
+				  // after 3s visible, start hide animation
+				  const visibleMs = 3000;
+				  // clear any previous timers stored on element
+				  if (toast._qtdTimer) { clearTimeout(toast._qtdTimer); toast._qtdTimer = null; }
+				  toast._qtdTimer = setTimeout(() => {
+					toast.classList.remove('qtd-show');
+					toast.classList.add('qtd-hide');
+					// when hide animation completes, remove/hide then trigger closebtn
+					function onAnimEnd(ev) {
+					  if (ev && ev.target !== toast) return;
+					  toast.removeEventListener('animationend', onAnimEnd);
+					  // remove element from DOM to keep things clean (or keep it hidden for reuse)
+					  try { toast.parentNode && toast.parentNode.removeChild(toast); } catch(e){}
+					  // trigger close button click (if exists)
+					  try {
+						const closeBtn = document.querySelector('.closebtn');
+						if (closeBtn) {
+						  // ensure slight delay so UI has settled
+						  setTimeout(() => { closeBtn.click(); }, 40);
+						} else {
+						  // fallback to calling closeNav() if defined
+						  if (typeof closeNav === 'function') setTimeout(closeNav, 40);
+						}
+					  } catch (err) { console.warn('Toast: could not trigger closebtn', err); }
+					}
+					// listen for animation end
+					toast.addEventListener('animationend', onAnimEnd);
+				  }, visibleMs);
+				}
+
+
+
+
+			
+			    // APPLY button handler: send update request to GAS
+			    if (applyBtn) {
+			      // remove any old listener by cloning node (safe way to remove handlers)
+			      const newApply = applyBtn.cloneNode(true);
+			      applyBtn.parentNode.replaceChild(newApply, applyBtn);
+			
+			      newApply.addEventListener('click', async function () {
+			        try {
+		
+					    // disable button while working
+					    newApply.disabled = true;
+					
+					    // helper: get trimmed value or empty string
+					    const getVal = id => {
+					      const el = document.getElementById(id);
+					      return el ? String(el.value || '').trim() : '';
+					    };
+					
+									
+						const inputrows = getVal('inputrows');     // hidden, already semicolon-delimited if created earlier
+						const inputyx   = getVal('inputyx');       // "lat lon" combined
+						
+						// build combined az/mt strings from az1..4 and mt1..4 (only include non-empty items)
+						const azs = [1,2,3,4].map(i => getVal('inputaz' + i)).filter(v => v !== '');
+						const mts = [1,2,3,4].map(i => getVal('inputmt' + i)).filter(v => v !== '');
+						const inputaz = azs.join(';');
+						const inputmt = mts.join(';');
+										
+			          const payload = {
+			            action: 'updateAzMt',      // server must handle this action
+			            siteid: rawSiteid,
+			            inputrows: inputrows,
+			            inputyx: inputyx,
+			            inputaz: inputaz,
+			            inputmt: inputmt
+			          };
+			
+			          // disable button while performing update
+			          newApply.disabled = true;
+			          newApply.style.backgroundColor = '#888';
+			          newApply.style.cursor = 'not-allowed';
+			          const prevText = newApply.textContent;
+			          newApply.textContent = 'Applying...';
+			
+			          // POST to your GAS endpoint (same 'url' variable used elsewhere)
+			          const r = await fetch(url, {
+			            method: 'POST',
+			            headers: { 'Content-Type': 'text/plain' },
+			            body: JSON.stringify(payload)
+			          });
+			
+			          
+						// read response body only once (as text), then try parse JSON from that text
+						let rtext = '';
+						try {
+						  const bodyText = await r.text(); // read once
+						  // try parse as JSON, otherwise keep raw text
+						  try {
+						    const parsed = JSON.parse(bodyText);
+						    
+						    rtext = typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
+						  } catch (je) {
+						    rtext = bodyText;
+						  }
+						} catch (readErr) {
+						  console.error('Failed to read response body', readErr);
+						  rtext = 'error reading response: ' + String(readErr);
+						}
+						
+						console.log('Update response: ' + rtext);
+						
+						// decide success vs failure
+						const trimmed = (rtext || '').toString().trim();
+						if (trimmed === 'ok') {
+						  showToastAndClose('Update successful', true);
+						} else if (trimmed.toLowerCase().startsWith('error:')) {
+						  showToastAndClose('Update failed: ' + rtext, false);
+						} else {
+						  showToastAndClose('Update response: ' + rtext, false);
+						}
+
+		
+			
+			          // restore apply button
+			          newApply.disabled = false;
+			          newApply.style.backgroundColor = origApplyBg || '#008000';
+			          newApply.style.cursor = origApplyCursor || 'pointer';
+			          newApply.textContent = prevText || 'Apply';
+			
+			        } catch (e) {
+			          console.log('Update failed: ' + (e && e.message ? e.message : e));
+					  showToastAndClose('Update failed: ' + (e && e.message ? e.message : e), false);
+						
+			          // restore apply button on failure
+			          try {
+			            newApply.disabled = false;
+			            newApply.style.backgroundColor = origApplyBg || '#008000';
+			            newApply.style.cursor = origApplyCursor || 'pointer';
+			            newApply.textContent = 'Apply';
+			          } catch (ee) {}
+			        }
+			      });
+			    }
+			
+			  } catch (err) {
+			    console.warn('populateAndWire error', err);
+			    // restore apply button on error
+			    const applyBtnErr = document.getElementById('applyAzBtn');
+			    if (applyBtnErr) {
+			      applyBtnErr.disabled = false;
+			      applyBtnErr.style.backgroundColor = '#008000';
+			      applyBtnErr.style.cursor = 'pointer';
+			      applyBtnErr.textContent = 'Apply';
+			    }
+			  }
+			})();
+		
+		
+			
+		    // 4. Generate KML on click
+		    btn.addEventListener('click', function () {
+		        const kmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+		<kml xmlns="http://www.opengis.net/kml/2.2">
+		  <Placemark>
+		    <name>${rawSiteid}</name>
+		    <Style>
+		      <IconStyle>
+				<color>ff55ffff</color>
+		        <scale>1.0</scale>
+		        <Icon>
+		          <href>http://maps.google.com/mapfiles/kml/shapes/donut.png</href>
+		        </Icon>
+		      </IconStyle>
+		      <LabelStyle>
+				<color>ffffff7f</color>
+		        <scale>0.7</scale>
+		      </LabelStyle>
+		    </Style>	
+		    <description><![CDATA[
+		<style>
+		.tab-container { width:800px; font-family:Arial,sans-serif; text-align:center; }
+		.tab-container input { display:none; }
+		.tab-links { background:white; padding:5px; text-align:center; }
+		.tab-container label {
+		  display:inline-block; padding:0 8px; color:#0066cc;
+		  text-decoration:underline; cursor:pointer; font-size:14px;
+		}
+		.tab-container label:hover { text-decoration:none; }
+		.tab-container .tab-content {
+		  display:none; border-top:1px solid #ccc; margin:10px 0;
+		}
+		.tab-container input:checked + label { font-weight:bold; text-decoration:none; }
+		${kmlImages.map((_, i) => `#tab${i+1}:checked ~ #content${i+1}`).join(',')} {
+		  display:block;
+		}
+		.tab-container img { display:block; margin:0 auto; width:100%; height:auto; }
+		</style>
+		
+		<div class="tab-container">
+		  ${kmlImages.map((_, i) =>
+		    `<input type="radio" id="tab${i+1}" name="tabs" ${i===0?'checked':''}>`
+		  ).join("\n")}
+		  <div class="tab-links">
+		    ${kmlImages.map((img, i) =>
+		      `<label for="tab${i+1}">${img.name}</label>${i<kmlImages.length-1?" | ":""}`
+		    ).join("\n")}
+		  </div>
+		  ${kmlImages.map((img, i) => `
+		  <div id="content${i+1}" class="tab-content">
+		    <img src="${img.url}">
+		    <div class="tab-links">
+		      ${kmlImages.map((inner, j) =>
+		        `<label for="tab${j+1}">${inner.name}</label>${j<kmlImages.length-1?" | ":""}`
+		      ).join("\n")}
+		    </div>
+		  </div>`).join("\n")}
+		</div>
+		    ]]></description>
+		    <Point>
+		      <coordinates>${longitude},${latitude},0</coordinates>
+		    </Point>
+		  </Placemark>
+		</kml>`;
+		
+		        const blob = new Blob([kmlContent], { type: 'application/vnd.google-earth.kml+xml' });
+		        const url = URL.createObjectURL(blob);
+		
+		        const link = document.createElement('a');
+		        link.href = url;
+		        link.download = `${placemarkName}.kml`;
+		        link.click();
+		        URL.revokeObjectURL(url);
+		    });
+
+
+			
+			function wrapGalleryWithMap(rawSiteid, containerSelector) {
+			  containerSelector = containerSelector || '.overlay-content';
+			  try {
+				var overlay = document.querySelector(containerSelector);
+				if (!overlay) return;
+				// only skip if we've wrapped and the wrapper element is still present.
+				// if the wrapper was removed (innerHTML replaced) we must re-run the wrapping.
+				if (overlay.__mapWrapped && overlay.querySelector('.gallery-split')) {
+				  return; // already wrapped and wrapper still in DOM
+				}
+				// helper: find descendant (prefer direct children first)
+				function findDescendant(parent, selector) {
+				  // prefer direct children
+				  for (var i = 0; i < parent.children.length; i++) {
+					if (parent.children[i].matches && parent.children[i].matches(selector)) return parent.children[i];
+				  }
+				  // fallback to any descendant
+				  return parent.querySelector(selector);
+				}
+
+				// create wrapper regions
+				var wrapper = document.createElement('div'); wrapper.className = 'gallery-split';
+				var left = document.createElement('div'); left.className = 'gallery-left';
+				var resizer = document.createElement('div'); resizer.id = 'galleryResizer';
+				var right = document.createElement('div'); right.className = 'gallery-right';
+				var footer = document.createElement('div'); footer.className = 'gallery-bottom';
+
+				// reuse persistent iframe if present
+				var persistent = document.getElementById('persistentMapFrame');
+				if (persistent) {
+				  mapNode = persistent;
+
+					console.debug('wrapGalleryWithMap: attaching persistent map into gallery (site=', rawSiteid, ')');
+					mapNode.dataset.lastAttached = Date.now();
+
+				  // helper to safely attempt postMessage
+				  function tryPostMessageOnce() {
+					try {
+					  if (mapNode.contentWindow && typeof mapNode.contentWindow.postMessage === 'function') {
+						mapNode.contentWindow.postMessage({ type: 'setSite', siteid: rawSiteid }, '*');
+						mapNode.dataset.lastSite = rawSiteid || '';
+						return true;
+					  }
+					} catch (err) {
+					  console.warn('postMessage attempt failed', err);
+					}
+					return false;
+				  }
+
+					// If postMessage didn't succeed immediately, wait for the persistent iframe's load and try again.
+					// IMPORTANT: do NOT change mapNode.src or create a short-lived iframe — that causes reloads.
+					if (!tryPostMessageOnce()) {
+					  var onLoad = function () {
+						tryPostMessageOnce();
+						mapNode.removeEventListener('load', onLoad);
+					  };
+					  mapNode.addEventListener('load', onLoad);
+					}
+					// (no else branch creating a new iframe here — we must always reuse persistentMapFrame)
+
+				} else {
+				  // --- Minimal change: DON'T create a short-lived iframe here ---
+				  // Instead, try to reuse/create a persistent iframe so it won't reload repeatedly.
+				  var persistent = document.getElementById('persistentMapFrame');
+
+				  // If persistent iframe does not yet exist (rare), create it synchronously once.
+				  if (!persistent) {
+					persistent = document.createElement('iframe');
+					persistent.id = 'persistentMapFrame';
+					persistent.style.display = 'none';
+					persistent.style.width = '100%';
+					persistent.style.height = '100%';
+					persistent.allow = 'geolocation; microphone; camera; accelerometer; gyroscope; autoplay';
+					// load base map once (no site param) — created only once
+					persistent.src = 'https://nokiaqtd.github.io/map';
+					persistent.addEventListener('load', function () { persistent.dataset.ready = '1'; }, { once: true });
+					(document.body || document.documentElement).appendChild(persistent);
+				  }
+
+				  // Use the persistent iframe as the map node and move it into the left pane.
+				  mapNode = persistent;
+
+
+
+					console.debug('wrapGalleryWithMap: attaching persistent map into gallery (site=', rawSiteid, ')');
+					mapNode.dataset.lastAttached = Date.now();
+
+				  // Attempt to instruct the map to switch site via postMessage (non-reloading).
+				  try {
+					if (mapNode.contentWindow && typeof mapNode.contentWindow.postMessage === 'function') {
+					  mapNode.contentWindow.postMessage({ type: 'setSite', siteid: rawSiteid }, '*');
+					  mapNode.dataset.lastSite = rawSiteid || '';
+					} else {
+					  // If postMessage not yet available, we do nothing here (no src change).
+					  // The persistent iframe will remain loaded and available instantly on next open.
+					  console.warn('persistent iframe present but contentWindow/postMessage not ready yet');
+					}
+				  } catch (err) {
+					console.warn('postMessage to persistent iframe failed', err);
+				  }
+				}
+
+
+
+
+				// find and place the slides container into right
+				var containerNode = findDescendant(overlay, '.container');
+				if (containerNode) {
+				  right.appendChild(containerNode);
+				} else {
+				  // if no .container found, move the first child that is not map, caption or row into right
+				  for (var j = 0; j < overlay.children.length; j++) {
+					var ch = overlay.children[j];
+					if (ch === mapNode) continue;
+					if (ch.classList && (ch.classList.contains('caption-container') || ch.classList.contains('row'))) continue;
+					right.appendChild(ch);
+					break;
+				  }
+				}
+
+				// move caption-container and .row (thumbnails) into footer (under the split)
+				var captionNode = findDescendant(overlay, '.caption-container');
+				if (captionNode) footer.appendChild(captionNode);
+				// prefer the thumbnail row that is a direct child first
+				var rowNode = null;
+				for (var k = 0; k < overlay.children.length; k++) {
+				  if (overlay.children[k].classList && overlay.children[k].classList.contains('row')) { rowNode = overlay.children[k]; break; }
+				}
+				if (!rowNode) rowNode = findDescendant(overlay, '.row');
+				if (rowNode) footer.appendChild(rowNode);
+
+				// any remaining nodes (rare) that are still children of overlay and not map/container/footer items
+				// leave them alone (minimal change) — if you want them in footer, uncomment the loop below.
+				/*
+				while (overlay.firstChild) {
+				  footer.appendChild(overlay.firstChild);
+				}
+				*/
+
+				// assemble and insert
+				wrapper.appendChild(left);
+				wrapper.appendChild(resizer);
+				wrapper.appendChild(right);
+				overlay.appendChild(wrapper);
+
+				// --- position the fixed holder AFTER wrapper is in DOM ---
+				// use requestAnimationFrame so layout is computed before measuring
+				if (window.__qtdPersistentMap && typeof window.__qtdPersistentMap.showAtRect === 'function') {
+
+					startMapAutoFit(left, rawSiteid);
+
+				} else {
+				  // fallback: if holder not ready, we leave iframe hidden; it will be positioned when available
+				  console.warn('wrapGalleryWithMap: qtdPersistentMap not available at append time');
+				}
+
+
+				if (footer.childNodes.length) overlay.appendChild(footer);
+
+				overlay.__mapWrapped = true;
+
+				// resizer logic (unchanged)
+				(function () {
+				  var startX = 0, startW = 0;
+				  function onMove(e) {
+					var clientX = (e.touches ? e.touches[0].clientX : e.clientX);
+					var parentW = wrapper.getBoundingClientRect().width;
+					var dx = clientX - startX;
+					var newW = startW + dx;
+					if (newW < 200) newW = 200;
+					if (newW > parentW - 200) newW = parentW - 200;
+					left.style.width = newW + 'px';
+					right.style.width = (parentW - newW - 8) + 'px';
+				  }
+				  function onUp() {
+					document.removeEventListener('mousemove', onMove, true);
+					document.removeEventListener('mouseup', onUp, true);
+					document.removeEventListener('touchmove', onMove, true);
+					document.removeEventListener('touchend', onUp, true);
+				  }
+				  resizer.addEventListener('mousedown', function (e) {
+					startX = e.clientX;
+					startW = left.getBoundingClientRect().width;
+					document.addEventListener('mousemove', onMove, true);
+					document.addEventListener('mouseup', onUp, true);
+					e.preventDefault();
+				  }, false);
+				  resizer.addEventListener('touchstart', function (e) {
+					startX = e.touches[0].clientX;
+					startW = left.getBoundingClientRect().width;
+					document.addEventListener('touchmove', onMove, true);
+					document.addEventListener('touchend', onUp, true);
+					e.preventDefault();
+				  }, false);
+				})();
+
+				// expose for debugging
+				window.__wrappedGallery = { wrapper: wrapper, mapNode: mapNode, containerNode: containerNode, footer: footer, left: left, right: right };
+			  } catch (err) {
+				if (window.console) console.error('wrapGalleryWithMap error', err);
+			  }
+			}
+
+
+			wrapGalleryWithMap(rawSiteid);
+			
+		}
 		
 
 
 		
-        function closeNav() {
-            document.getElementById("myNav").style.width = "0%";
-            lowerdiv.style.transition = "opacity 0.5s 0.5s";
-            lowerdiv.style.opacity = "1";
-        }
+		function closeNav() {
+		  document.getElementById("myNav").style.width = "0%";
+		  lowerdiv.style.transition = "opacity 0.5s 0.5s";
+		  lowerdiv.style.opacity = "1";
+
+			stopMapAutoFit();
+			window.__qtdPersistentMap.hide();
+
+		}
+
 
         document.addEventListener("DOMContentLoaded", function () {
             const images = document.querySelectorAll('.demo');
@@ -1756,7 +2656,7 @@ ${kmlImages.map((_, i) => `#tab${i+1}:checked ~ #content${i+1}`).join(',')} {
 	    document.body.style.overflow = prevOverflow || '';
 	    document.removeEventListener('keydown', keyHandler, true);
 	    // small delay so any immediate handlers (inject JSONP / setCookie) run, then reload
-	    setTimeout(function () { try { location.reload(); } catch (e) { /* ignore */ } }, 220);
+	    //setTimeout(function () { try { location.reload(); } catch (e) { /* ignore */ } }, 220);
 	  }
 	
 	  save.addEventListener('click', function () { closeAndCleanup(collectSelected()); });
@@ -1820,7 +2720,9 @@ ${kmlImages.map((_, i) => `#tab${i+1}:checked ~ #content${i+1}`).join(',')} {
 	    }
 	  });
 	})();	
-      
+
+
+		
     </script>
 </body>
 
