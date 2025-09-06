@@ -815,12 +815,12 @@
 
 		  var iframe = document.createElement('iframe');
 		  iframe.id = 'persistentMapFrame';
-		  iframe.allow = 'geolocation; microphone; camera; accelerometer; gyroscope; autoplay';
+		  iframe.allow = 'clipboard-write; clipboard-read; geolocation; microphone; camera; accelerometer; gyroscope; autoplay';
 		  iframe.style.width = '100%';
 		  iframe.style.height = '100%';
 		  iframe.style.border = '0';
 		  // load base map once (do not change src later)
-		  iframe.src = 'https://nokiaqtd.github.io/map';
+		  iframe.src = 'https://script.google.com/macros/s/AKfycbyEe0NDV8L3NLw6cOWazscYLtiJo8QeLjztuORcwgs0roZR8cJyK7jZO1lMNfHKm9aq1g/exec';
 		  // optional ready flag
 		  iframe.addEventListener('load', function () {
 			iframe.dataset.ready = '1';
@@ -855,6 +855,252 @@
 		})();
 
 
+// persistent gallery resizer (percentage-based) — ES5 (robust reattach + pauseSaving)
+(function () {
+  var STORAGE_KEY = 'qtd.galleryResizer.v1.pct';
+  var LEFT_SEL = '.gallery-left';
+  var RESIZER_SEL = '#galleryResizer';
+  var DEFAULT_PCT = 50;
+  var MIN_PX = 120;
+  var DEBOUNCE_MS = 180;
+
+  function readStored() {
+    try {
+      var s = localStorage.getItem(STORAGE_KEY);
+      if (!s) return null;
+      return JSON.parse(s);
+    } catch (e) { return null; }
+  }
+  function writeStored(obj) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(obj)); } catch (e) {}
+  }
+
+  function getBaseWidth(leftEl) {
+    try {
+      if (!leftEl) return window.innerWidth || document.documentElement.clientWidth;
+      var parent = leftEl.parentNode;
+      if (parent && parent.getBoundingClientRect) {
+        var br = parent.getBoundingClientRect();
+        if (br && br.width > 0) return br.width;
+      }
+    } catch (e) {}
+    return window.innerWidth || document.documentElement.clientWidth;
+  }
+
+  function applyPct(leftEl, pct) {
+    if (!leftEl || typeof pct !== 'number' || isNaN(pct)) return;
+    var base = getBaseWidth(leftEl);
+    var px = Math.round(base * (pct / 100));
+    var maxPx = Math.max(200, Math.round(base - 200));
+    if (px < MIN_PX) px = MIN_PX;
+    if (px > maxPx) px = maxPx;
+    leftEl.style.width = px + 'px';
+  }
+
+  function loadAndApplyFor(leftEl) {
+    if (!leftEl) return false;
+    var stored = readStored();
+    if (stored && typeof stored.pct === 'number') {
+      applyPct(leftEl, stored.pct);
+      return true;
+    }
+    applyPct(leftEl, DEFAULT_PCT);
+    return false;
+  }
+  
+  // --- guard: only persist when #myNav overlay is present & visibly open ---
+var saveTimer = null;
+
+function isMyNavOpen() {
+  try {
+    var nav = document.getElementById('myNav');
+    if (!nav) return false;
+    // consider it open if it has visible area (width > small threshold)
+    var r = nav.getBoundingClientRect();
+    if (r && r.width > 8 && r.height > 8) return true;
+    // fallback to computed style checks
+    var cs = window.getComputedStyle(nav);
+    if (!cs) return false;
+    if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    // if it has non-zero opacity and not explicitly width 0%, treat as open
+    if ((cs.opacity && parseFloat(cs.opacity) === 0) || cs.width === '0px' || cs.width === '0%') return false;
+    return true;
+  } catch (e) { return false; }
+}
+
+function saveNow() {
+  try {
+    if (pauseSavingFlag) return;            // respect explicit pause
+    if (!isMyNavOpen()) return;             // DO NOT save when myNav closed
+    var leftEl = document.querySelector(LEFT_SEL);
+    if (!leftEl) return;
+    var w = leftEl.getBoundingClientRect().width;
+    var base = getBaseWidth(leftEl);
+    if (!(base > 0)) return;
+    var pct = (w / base) * 100;
+    pct = Math.round(pct * 100) / 100;
+    writeStored({ pct: pct, savedAt: Date.now() });
+  } catch (e) {
+    // swallow errors silently
+  }
+}
+
+function scheduleSave() {
+  try {
+    if (pauseSavingFlag) return;            // do not schedule while paused
+    if (!isMyNavOpen()) return;             // don't schedule when overlay closed
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      saveTimer = null;
+      saveNow();
+    }, DEBOUNCE_MS);
+  } catch (e) { saveNow(); }
+}
+
+
+  // track current attached left element and its ResizeObserver so we can reattach
+  var currentLeftEl = null;
+  var currentRO = null;
+
+  function detachCurrent() {
+    try {
+      if (currentRO && typeof currentRO.disconnect === 'function') {
+        try { currentRO.disconnect(); } catch (e) {}
+      }
+      currentRO = null;
+      currentLeftEl = null;
+    } catch (e) {}
+  }
+
+
+function attachToLeft(leftEl) {
+  if (!leftEl) return false;
+  if (currentLeftEl === leftEl) return true; // already attached to this element
+
+  // detach previous
+  detachCurrent();
+
+  currentLeftEl = leftEl;
+
+  // apply saved/default immediately to the new left element
+  try { loadAndApplyFor(currentLeftEl); } catch (e) {}
+
+  // observe size changes on the new left element
+  try {
+    if (typeof window.ResizeObserver === 'function') {
+      // Ignore the first RO callback (initial layout) to avoid saving transient sizes.
+      var skipInitialRO = true;
+      currentRO = new ResizeObserver(function (entries) {
+        try {
+          if (skipInitialRO) { skipInitialRO = false; return; }
+          // batch via requestAnimationFrame then schedule saving
+          requestAnimationFrame(function () { scheduleSave(); });
+        } catch (err) {
+          // if something goes wrong, still attempt schedule
+          try { scheduleSave(); } catch (e) {}
+        }
+      });
+      try { currentRO.observe(currentLeftEl); } catch (e) { currentRO = null; }
+    } else {
+      // fallback: listen to window resize as coarse fallback
+      var onWin = function () { scheduleSave(); };
+      window.addEventListener('resize', onWin);
+      // store a tiny disconnect wrapper so detachCurrent can remove if needed
+      currentRO = { disconnect: function () { window.removeEventListener('resize', onWin); } };
+    }
+  } catch (ex) {
+    try { window.addEventListener('resize', scheduleSave); } catch (e) {}
+  }
+
+  // Also ensure resizer element (if present) ends trigger save on pointerup
+  try {
+    var resizerEl = document.querySelector(RESIZER_SEL);
+    if (resizerEl) {
+      // Add pointerup listeners that schedule save (idempotent)
+      var onInteractionEnd = function () { scheduleSave(); };
+      resizerEl.addEventListener('pointerup', onInteractionEnd);
+      resizerEl.addEventListener('mouseup', onInteractionEnd);
+      resizerEl.addEventListener('touchend', onInteractionEnd);
+      // store references to remove later by wrapping them on element (safe)
+      try { resizerEl.__qtd_resizer_bound = onInteractionEnd; } catch (e) {}
+    }
+  } catch (e) {}
+
+  return true;
+}
+  var _globalBound = false;
+  function ensureGlobalInteractionListeners() {
+    if (_globalBound) return;
+    _globalBound = true;
+    var boundFn = function () { scheduleSave(); };
+    document.addEventListener('pointerup', boundFn);
+    document.addEventListener('mouseup', boundFn);
+    document.addEventListener('touchend', boundFn);
+  }
+
+  // pause-saving support
+  var pauseSavingFlag = false;
+  var pauseTimer = null;
+  function pauseSaving(ms) {
+    try {
+      pauseSavingFlag = true;
+      if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; }
+      if (typeof ms === 'number' && ms > 0) {
+        pauseTimer = setTimeout(function () {
+          pauseTimer = null;
+          pauseSavingFlag = false;
+        }, Math.max(50, Math.round(ms)));
+      }
+    } catch (e) { pauseSavingFlag = false; }
+  }
+
+  // MutationObserver that watches for new .gallery-left elements and attaches to them.
+  var watchMo = null;
+  function watchForLeftChanges() {
+    if (watchMo) return;
+    try {
+      watchMo = new MutationObserver(function () {
+        try {
+          var left = document.querySelector(LEFT_SEL);
+          if (left) attachToLeft(left);
+        } catch (e) {}
+      });
+      watchMo.observe(document.documentElement || document.body, { childList: true, subtree: true });
+    } catch (e) {
+      // last-resort: poll occasionally
+      setInterval(function () {
+        var left = document.querySelector(LEFT_SEL);
+        if (left) attachToLeft(left);
+      }, 400);
+    }
+  }
+
+  function init() {
+    ensureGlobalInteractionListeners();
+    watchForLeftChanges();
+    // try immediate attach if gallery already exists
+    try { attachToLeft(document.querySelector(LEFT_SEL)); } catch (e) {}
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  // export helpers
+  window.qtdGalleryResizer = {
+    saveNow: saveNow,
+    loadAndApply: function () { return loadAndApplyFor(document.querySelector(LEFT_SEL)); },
+    scheduleSave: scheduleSave,
+    STORAGE_KEY: STORAGE_KEY,
+    pauseSaving: pauseSaving,
+    _debugDetach: detachCurrent
+  };
+})();
+
+		
+				
 		function autoResizeInput(input) {
 		  // +1 so it never fully collapses
 		  input.style.width = (input.value.length + 1) + "ch";
@@ -1852,9 +2098,9 @@
 					persistent.style.display = 'none';
 					persistent.style.width = '100%';
 					persistent.style.height = '100%';
-					persistent.allow = 'geolocation; microphone; camera; accelerometer; gyroscope; autoplay';
+					persistent.allow = 'clipboard-write; clipboard-read; geolocation; microphone; camera; accelerometer; gyroscope; autoplay';
 					// load base map once (no site param) — created only once
-					persistent.src = 'https://nokiaqtd.github.io/map';
+					persistent.src = 'https://script.google.com/macros/s/AKfycbyEe0NDV8L3NLw6cOWazscYLtiJo8QeLjztuORcwgs0roZR8cJyK7jZO1lMNfHKm9aq1g/exec';
 					persistent.addEventListener('load', function () { persistent.dataset.ready = '1'; }, { once: true });
 					(document.body || document.documentElement).appendChild(persistent);
 				  }
@@ -1991,15 +2237,47 @@
 
 
 		
-		function closeNav() {
-		  document.getElementById("myNav").style.width = "0%";
-		  lowerdiv.style.transition = "opacity 0.5s 0.5s";
-		  lowerdiv.style.opacity = "1";
+function closeNav() {
+  try {
+    // Pause gallery resizer saves while the overlay animates closed.
+    if (window.qtdGalleryResizer && typeof window.qtdGalleryResizer.pauseSaving === 'function') {
+      try {
+        var myNavEl = document.getElementById('myNav');
+        var durMs = 600; // fallback
+        if (myNavEl) {
+          var cs = window.getComputedStyle(myNavEl);
+          // parse transition-duration (first item) and add transition-delay if present
+          var td = (cs.transitionDuration || '').split(',')[0] || '';
+          var tdel = (cs.transitionDelay || '').split(',')[0] || '';
+          function toMs(str) {
+            var m = String(str).trim().match(/^([\d.]+)(ms|s)?$/);
+            if (!m) return 0;
+            var v = parseFloat(m[1]);
+            return (m[2] === 's' || m[2] === undefined && str.indexOf('s') >= 0) ? v * 1000 : v;
+          }
+          var d1 = toMs(td);
+          var d2 = toMs(tdel);
+          if (d1 + d2 > 0) durMs = Math.round(d1 + d2 + 80); // small buffer
+        }
+        window.qtdGalleryResizer.pauseSaving(durMs);
+      } catch (e) { /* continue anyway */ }
+    }
+  } catch (e) { /* ignore */ }
 
-			stopMapAutoFit();
-			window.__qtdPersistentMap.hide();
+  // close overlay (this triggers transition)
+  var nav = document.getElementById('myNav');
+  if (nav) nav.style.width = '0%';
 
-		}
+  try {
+    lowerdiv.style.transition = 'opacity 0.5s 0.5s';
+    lowerdiv.style.opacity = '1';
+  } catch (e) {}
+
+  // stop map autosize & hide holder (no saving while paused)
+  try { stopMapAutoFit(); } catch (e) {}
+  try { window.__qtdPersistentMap.hide(); } catch (e) {}
+}
+
 
 
         document.addEventListener("DOMContentLoaded", function () {
