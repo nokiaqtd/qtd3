@@ -361,17 +361,7 @@
             display: none;
         }
 
-        .mySlides img {
-            height: 80vh;
-            /* 85% of the viewport height */
-            width: auto;
-            /* Auto width to maintain aspect ratio */
-            max-width: 100%;
-            display: block;
-            margin-left: auto;
-            margin-right: auto;
 
-        }
 
         /* Add a pointer when hovering over the thumbnail images */
         .cursor {
@@ -578,7 +568,17 @@
 		.gallery-left{width:45%;min-width:220px;max-width:75%}
 		.gallery-left iframe{width:100%;height:100%;border:0;display:block}
 		#galleryResizer{width:8px;cursor:col-resize;background:rgba(0,0,0,0.06)}
-		.gallery-right{flex:1 1 0;min-width:300px;overflow:auto}
+
+.gallery-right {
+  flex: 1 1 0;
+  min-width: 300px;
+  overflow: hidden;              /* hide anything larger than the pane */
+  display: flex;                 /* center the image */
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+		
 		/* footer area below the split that will hold caption-container + thumbnails */
 		.gallery-bottom { margin-top: 8px; padding: 6px 0; width: 100%; box-sizing: border-box; }
 
@@ -649,8 +649,121 @@
 
 		/* keep apply button layout unchanged; it sits next to downloadKMLBtn as before */
 		#caption1 > div button { vertical-align: middle; }
-			
-			
+
+/* Gutter (vertical resizer) — styled like mdt.html */
+#galleryGutter {
+  position: fixed;
+  top: 0;
+  height: 100vh;
+  width: 12px;
+  z-index: 10001;
+  cursor: col-resize;
+  user-select: none;
+  -webkit-user-select: none;
+  display: none;               /* shown only when gallery opened */
+  align-items: center;
+  justify-content: center;
+  transition: background .12s;
+}
+#galleryGutter:hover { background: rgba(0,0,0,0.03); }
+
+/* visible handle in the gutter (elegant centered handle) */
+#galleryGutter .handle {
+  width: 4px;
+  height: 48px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.75);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+  transform: translateX(0);
+}
+
+/* ---- Paste this into your gallery CSS (replace previous image-related rules) ---- */
+
+/* Make each pane a flex container and prevent overflow from children */
+.gallery-left,
+.gallery-right {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;    /* hide anything bigger than the pane */
+  max-height: 100vh;   /* don't allow pane to exceed viewport height */
+  min-height: 0;       /* important: lets flex children shrink and avoids overflow */
+}
+
+/* Constrain images to their pane (never exceed the pane) and preserve aspect ratio */
+.gallery-left img,
+.gallery-right img {
+  max-width: 100%;
+  max-height: 100%;    /* <-- relative to the pane because pane has max-height */
+  width: auto;
+  height: auto;
+  object-fit: contain; /* keep natural aspect ratio */
+  display: block;
+}
+
+/* ensure the slideshow area in the overlay stays within 80vh and centers its content */
+.overlay .overlay-content {
+  box-sizing: border-box;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;       /* optional spacing */
+}
+
+.overlay .overlay-content > .container:first-child {
+  /* slideshow area: max 80vh and center contents */
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}		
+
+
+/* === Add: constrain slideshow inside gallery-right === */
+
+/* make right pane column so footer/caption can sit under slideshow */
+.gallery-right {
+  display: flex;            /* already set; ensure column */
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 0;            /* allow flex children to shrink (important) */
+}
+
+/* the slideshow container inside gallery-right should take available height */
+.gallery-right > .container,
+.gallery-right .container {
+  flex: 1 1 0;              /* fill vertical space inside gallery-right */
+  min-height: 0;            /* critical to allow children to shrink inside flex */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;         /* hide anything bigger than the container */
+  box-sizing: border-box;
+}
+
+/* make each slide fill the container and center its image */
+.mySlides {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+/* constrain images to the slide container — never exceed it, keep aspect */
+.mySlides img,
+.gallery-right img {
+  max-width: 100%;
+  max-height: 100%;    /* now measured relative to the .container / .mySlides height */
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+		
 	</style>
 		
 </head>
@@ -821,7 +934,7 @@
 		  iframe.style.height = '100%';
 		  iframe.style.border = '0';
 		  // load base map once (do not change src later)
-		  iframe.src = 'https://script.google.com/macros/s/AKfycbzPn0YAnTvkHgYDJrHJ7LoN8TTFqP1uiVTUc33ejld8S92-NDBoQsK6f_mASX0LGb0Trw/exec';
+		  iframe.src = 'https://script.google.com/macros/s/AKfycbzRqvHkbVemjgnMgWy98UbscgRM9KECE3JUC5f2pAZyyitQrS3uqyNnu8GpJ2WyJiHDZA/exec';
 		  // optional ready flag
 		  iframe.addEventListener('load', function () {
 			iframe.dataset.ready = '1';
@@ -1775,57 +1888,70 @@ function attachToLeft(leftEl) {
 					}					
 			    }
 			
+// replace existing showToastAndClose(...) with this showToast(...)
+function showToast(message, success, closeImmediately) {
+  var toast = document.getElementById('qtd-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'qtd-toast';
+    toast.innerHTML = '<span class="qtd-msg"></span>';
+    document.body.appendChild(toast);
+  }
+  var msgEl = toast.querySelector('.qtd-msg');
+  msgEl.textContent = message || '';
 
-				// ---- toaster helper: showToastAndClose(message, success) ----
-				function showToastAndClose(message, success) {
-				  // reuse existing toast element if present
-				  let toast = document.getElementById('qtd-toast');
-				  if (!toast) {
-					toast = document.createElement('div');
-					toast.id = 'qtd-toast';
-					toast.innerHTML = '<span class="qtd-msg"></span>';
-					document.body.appendChild(toast);
-				  }
-				  const msgEl = toast.querySelector('.qtd-msg');
-				  msgEl.textContent = message || '';
+  // reset classes
+  toast.classList.remove('qtd-success','qtd-error','qtd-show','qtd-hide');
+  toast.classList.add(success ? 'qtd-success' : 'qtd-error');
 
-				  // apply classes
-				  toast.classList.remove('qtd-success','qtd-error','qtd-show','qtd-hide');
-				  toast.classList.add(success ? 'qtd-success' : 'qtd-error');
+  // clear previous timer/flags
+  if (toast._qtdTimer) { clearTimeout(toast._qtdTimer); toast._qtdTimer = null; }
+  // default: do NOT auto-close overlay when toast hides.
+  // only code paths that explicitly call close (closeImmediately) will close the overlay.
+  toast._qtdSkipCloseOnAnimEnd = true;
 
-				  // force reflow then start entrance animation
-				  void toast.offsetWidth;
-				  toast.classList.add('qtd-show');
+  // show
+  void toast.offsetWidth;
+  toast.classList.add('qtd-show');
 
-				  // after 3s visible, start hide animation
-				  const visibleMs = 3000;
-				  // clear any previous timers stored on element
-				  if (toast._qtdTimer) { clearTimeout(toast._qtdTimer); toast._qtdTimer = null; }
-				  toast._qtdTimer = setTimeout(() => {
-					toast.classList.remove('qtd-show');
-					toast.classList.add('qtd-hide');
-					// when hide animation completes, remove/hide then trigger closebtn
-					function onAnimEnd(ev) {
-					  if (ev && ev.target !== toast) return;
-					  toast.removeEventListener('animationend', onAnimEnd);
-					  // remove element from DOM to keep things clean (or keep it hidden for reuse)
-					  try { toast.parentNode && toast.parentNode.removeChild(toast); } catch(e){}
-					  // trigger close button click (if exists)
-					  try {
-						const closeBtn = document.querySelector('.closebtn');
-						if (closeBtn) {
-						  // ensure slight delay so UI has settled
-						  setTimeout(() => { closeBtn.click(); }, 40);
-						} else {
-						  // fallback to calling closeNav() if defined
-						  if (typeof closeNav === 'function') setTimeout(closeNav, 40);
-						}
-					  } catch (err) { console.warn('Toast: could not trigger closebtn', err); }
-					}
-					// listen for animation end
-					toast.addEventListener('animationend', onAnimEnd);
-				  }, visibleMs);
-				}
+  // if caller asks to close immediately, do it now (short delay)
+  if (closeImmediately) {
+    toast._qtdSkipCloseOnAnimEnd = true;
+    setTimeout(function () {
+      var closeBtn = document.querySelector('.closebtn');
+      if (closeBtn) {
+        try { closeBtn.click(); } catch (e) { if (typeof closeNav === 'function') closeNav(); }
+      } else {
+        if (typeof closeNav === 'function') closeNav();
+      }
+    }, 40);
+  }
+
+  // hide after same visible duration (3s) and remove DOM node on animation end
+  var visibleMs = 3000;
+  toast._qtdTimer = setTimeout(function () {
+    try { toast.classList.remove('qtd-show'); toast.classList.add('qtd-hide'); } catch (e) {}
+    function onAnimEnd(ev) {
+      if (ev && ev.target !== toast) return;
+      toast.removeEventListener('animationend', onAnimEnd);
+      try { toast.parentNode && toast.parentNode.removeChild(toast); } catch (e) {}
+      // trigger close only if immediate-close path didn't already do it
+      if (!toast._qtdSkipCloseOnAnimEnd) {
+        try {
+          var closeBtn2 = document.querySelector('.closebtn');
+          if (closeBtn2) {
+            setTimeout(function () { try { closeBtn2.click(); } catch (e) { if (typeof closeNav === 'function') closeNav(); } }, 40);
+          } else {
+            if (typeof closeNav === 'function') setTimeout(closeNav, 40);
+          }
+        } catch (err) { console.warn('Toast: could not trigger closebtn', err); }
+      }
+    }
+    toast.addEventListener('animationend', onAnimEnd);
+  }, visibleMs);
+}
+
+
 
 
 
@@ -1904,13 +2030,17 @@ function attachToLeft(leftEl) {
 						
 						// decide success vs failure
 						const trimmed = (rtext || '').toString().trim();
-						if (trimmed === 'ok') {
-						  showToastAndClose('Update successful', true);
-						} else if (trimmed.toLowerCase().startsWith('error:')) {
-						  showToastAndClose('Update failed: ' + rtext, false);
-						} else {
-						  showToastAndClose('Update response: ' + rtext, false);
-						}
+if (trimmed === 'ok') {
+  // success: show toast AND close immediately
+  showToast('Update successful', true, true);
+} else if (trimmed.toLowerCase().startsWith('error:')) {
+  // failure: show toast and DO NOT close (let user retry)
+  showToast('Update failed: ' + rtext, false, false);
+} else {
+  showToast('Update response: ' + rtext, false, false);
+}
+
+
 
 		
 			
@@ -1922,7 +2052,7 @@ function attachToLeft(leftEl) {
 			
 			        } catch (e) {
 			          console.log('Update failed: ' + (e && e.message ? e.message : e));
-					  showToastAndClose('Update failed: ' + (e && e.message ? e.message : e), false);
+					  showToast('Update failed: ' + (e && e.message ? e.message : e), false, false);
 						
 			          // restore apply button on failure
 			          try {
@@ -2028,6 +2158,36 @@ function attachToLeft(leftEl) {
 
 			
 			function wrapGalleryWithMap(rawSiteid, containerSelector) {
+
+// If the gallery uses <img> elements inside the right pane, ensure they keep natural ratio during resize.
+(function ensureGalleryImageBehavior() {
+  try {
+    var img = right.querySelector('img');
+    if (!img) return; // nothing to do
+
+    // enforce CSS fallback from JS, and store aspect ratio if needed
+    img.style.maxWidth = '100%';
+    img.style.maxHeight = '100%';
+    img.style.width = 'auto';
+    img.style.height = 'auto';
+    img.style.objectFit = 'contain';
+
+    // optional: store ratio (useful if you want to enforce exact container height based on ratio)
+    if (img.complete && img.naturalWidth && img.naturalHeight) {
+      img.dataset.aspectRatio = (img.naturalWidth / img.naturalHeight).toString();
+    } else {
+      img.addEventListener('load', function () {
+        if (img.naturalWidth && img.naturalHeight) {
+          img.dataset.aspectRatio = (img.naturalWidth / img.naturalHeight).toString();
+        }
+      }, { once: true });
+    }
+  } catch (e) {
+    console && console.warn && console.warn('ensureGalleryImageBehavior error', e);
+  }
+})();
+
+				
 			  containerSelector = containerSelector || '.overlay-content';
 			  try {
 				var overlay = document.querySelector(containerSelector);
@@ -2050,7 +2210,7 @@ function attachToLeft(leftEl) {
 				// create wrapper regions
 				var wrapper = document.createElement('div'); wrapper.className = 'gallery-split';
 				var left = document.createElement('div'); left.className = 'gallery-left';
-				var resizer = document.createElement('div'); resizer.id = 'galleryResizer';
+				
 				var right = document.createElement('div'); right.className = 'gallery-right';
 				var footer = document.createElement('div'); footer.className = 'gallery-bottom';
 
@@ -2101,7 +2261,7 @@ function attachToLeft(leftEl) {
 					persistent.style.height = '100%';
 					persistent.allow = 'clipboard-write; clipboard-read; geolocation; microphone; camera; accelerometer; gyroscope; autoplay';
 					// load base map once (no site param) — created only once
-					persistent.src = 'https://script.google.com/macros/s/AKfycbzPn0YAnTvkHgYDJrHJ7LoN8TTFqP1uiVTUc33ejld8S92-NDBoQsK6f_mASX0LGb0Trw/exec';
+					persistent.src = 'https://script.google.com/macros/s/AKfycbzRqvHkbVemjgnMgWy98UbscgRM9KECE3JUC5f2pAZyyitQrS3uqyNnu8GpJ2WyJiHDZA/exec';
 					persistent.addEventListener('load', function () { persistent.dataset.ready = '1'; }, { once: true });
 					(document.body || document.documentElement).appendChild(persistent);
 				  }
@@ -2168,7 +2328,7 @@ function attachToLeft(leftEl) {
 
 				// assemble and insert
 				wrapper.appendChild(left);
-				wrapper.appendChild(resizer);
+				
 				wrapper.appendChild(right);
 				overlay.appendChild(wrapper);
 
@@ -2188,40 +2348,131 @@ function attachToLeft(leftEl) {
 
 				overlay.__mapWrapped = true;
 
-				// resizer logic (unchanged)
-				(function () {
-				  var startX = 0, startW = 0;
-				  function onMove(e) {
-					var clientX = (e.touches ? e.touches[0].clientX : e.clientX);
-					var parentW = wrapper.getBoundingClientRect().width;
-					var dx = clientX - startX;
-					var newW = startW + dx;
-					if (newW < 200) newW = 200;
-					if (newW > parentW - 200) newW = parentW - 200;
-					left.style.width = newW + 'px';
-					right.style.width = (parentW - newW - 8) + 'px';
-				  }
-				  function onUp() {
-					document.removeEventListener('mousemove', onMove, true);
-					document.removeEventListener('mouseup', onUp, true);
-					document.removeEventListener('touchmove', onMove, true);
-					document.removeEventListener('touchend', onUp, true);
-				  }
-				  resizer.addEventListener('mousedown', function (e) {
-					startX = e.clientX;
-					startW = left.getBoundingClientRect().width;
-					document.addEventListener('mousemove', onMove, true);
-					document.addEventListener('mouseup', onUp, true);
-					e.preventDefault();
-				  }, false);
-				  resizer.addEventListener('touchstart', function (e) {
-					startX = e.touches[0].clientX;
-					startW = left.getBoundingClientRect().width;
-					document.addEventListener('touchmove', onMove, true);
-					document.addEventListener('touchend', onUp, true);
-					e.preventDefault();
-				  }, false);
-				})();
+
+
+// --- replace resizer with a fixed gutter that uses a full-page capture layer (prevents iframe interference)
+(function createGalleryGutter() {
+  try {
+    var gutterId = 'galleryGutter';
+    // remove previous if any
+    var old = document.getElementById(gutterId);
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+
+    var gutter = document.createElement('div');
+    gutter.id = gutterId;
+    gutter.style.display = 'flex';
+    var gutterW = 12;
+    gutter.style.width = gutterW + 'px';
+    // position near the split computed from left pane
+    function placeGutter() {
+      var rect = left.getBoundingClientRect();
+      gutter.style.left = (Math.round(rect.right - Math.floor(gutterW/2))) + 'px';
+      gutter.style.top = (Math.round(rect.top)) + 'px';
+      gutter.style.position = 'fixed';
+      gutter.style.height = (Math.round(rect.height)) + 'px';
+    }
+    // handle element
+    var handle = document.createElement('div');
+    handle.className = 'handle';
+    gutter.appendChild(handle);
+    document.body.appendChild(gutter);
+    placeGutter();
+    gutter.style.display = 'flex';
+
+    // update placement on window resize / layout changes
+    var placeObserver = new ResizeObserver(function () { placeGutter(); });
+    placeObserver.observe(wrapper);
+
+    // drag state
+    var dragging = false;
+    var startX = 0;
+    var startLeftWidth = 0;
+    var dragCapture = null;
+
+    function startDrag(e) {
+      e.preventDefault && e.preventDefault();
+      dragging = true;
+      startX = (e.touches && e.touches.length) ? e.touches[0].clientX : e.clientX;
+      startLeftWidth = left.getBoundingClientRect().width;
+
+      // create full-page transparent capture layer so iframe can't steal mouse events
+      if (!dragCapture) {
+        dragCapture = document.createElement('div');
+        dragCapture.id = 'galleryDragCapture';
+        dragCapture.style.position = 'fixed';
+        dragCapture.style.top = '0';
+        dragCapture.style.left = '0';
+        dragCapture.style.width = '100%';
+        dragCapture.style.height = '100%';
+        dragCapture.style.zIndex = '10002';          // above gutter & overlay
+        dragCapture.style.cursor = 'col-resize';
+        dragCapture.style.background = 'transparent';
+        dragCapture.style.pointerEvents = 'auto';
+        document.body.appendChild(dragCapture);
+      }
+
+      document.addEventListener('mousemove', onMove, false);
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('mouseup', stopDrag, false);
+      document.addEventListener('touchend', stopDrag, false);
+
+      gutter.style.background = 'rgba(0,0,0,0.03)';
+    }
+
+    function onMove(e) {
+      if (!dragging) return;
+      e.preventDefault && e.preventDefault();
+      var clientX = (e.touches && e.touches.length) ? e.touches[0].clientX : e.clientX;
+      var dx = clientX - startX;
+      var parentW = wrapper.getBoundingClientRect().width;
+      var newLeftW = startLeftWidth + dx;
+      // clamp
+      var minLeft = 200;
+      var minRight = 200;
+      if (newLeftW < minLeft) newLeftW = minLeft;
+      if (newLeftW > parentW - minRight) newLeftW = parentW - minRight;
+
+      left.style.width = newLeftW + 'px';
+      right.style.width = (parentW - newLeftW - 8) + 'px';
+
+      // reposition gutter to stay centered between panes
+      placeGutter();
+    }
+
+    function stopDrag() {
+      dragging = false;
+      gutter.style.background = 'transparent';
+      if (dragCapture && dragCapture.parentNode) {
+        dragCapture.parentNode.removeChild(dragCapture);
+        dragCapture = null;
+      }
+      document.removeEventListener('mousemove', onMove, false);
+      document.removeEventListener('touchmove', onMove, { passive: false });
+      document.removeEventListener('mouseup', stopDrag, false);
+      document.removeEventListener('touchend', stopDrag, false);
+
+      // trigger save if your persistent resizer exists
+      if (window.qtdGalleryResizer && typeof window.qtdGalleryResizer.scheduleSave === 'function') {
+        try { window.qtdGalleryResizer.scheduleSave(); } catch (e) {}
+      }
+    }
+
+    gutter.addEventListener('mousedown', startDrag, false);
+    gutter.addEventListener('touchstart', startDrag, { passive: false });
+
+    // make sure gutter is removed when overlay is hidden/closed
+    // (closeNav will remove it too — see next change)
+    // expose a property so debug tools can remove it if needed
+    wrapper.__galleryGutter = gutter;
+
+  } catch (err) {
+    console && console.warn && console.warn('createGalleryGutter error', err);
+  }
+})();
+
+
+
+				  
 
 				// expose for debugging
 				window.__wrappedGallery = { wrapper: wrapper, mapNode: mapNode, containerNode: containerNode, footer: footer, left: left, right: right };
@@ -2267,7 +2518,22 @@ function closeNav() {
 
   // close overlay (this triggers transition)
   var nav = document.getElementById('myNav');
-  if (nav) nav.style.width = '0%';
+  if (nav) 
+  {
+	  nav.style.width = '0%';
+// remove gutter & capture to fully disable dragging when overlay closed
+try {
+  var g = document.getElementById('galleryGutter'); if (g && g.parentNode) g.parentNode.removeChild(g);
+  var dc = document.getElementById('galleryDragCapture'); if (dc && dc.parentNode) dc.parentNode.removeChild(dc);
+} catch (e) {}
+
+// also remove old galleryResizer if any
+try {
+  var r = document.getElementById('galleryResizer');
+  if (r && r.parentNode) r.parentNode.removeChild(r);
+} catch (e) {}
+	  
+	}
 
   try {
     lowerdiv.style.transition = 'opacity 0.5s 0.5s';
