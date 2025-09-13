@@ -577,38 +577,7 @@
 		.gallery-split{display:flex;gap:8px;height:80vh;align-items:stretch}
 		.gallery-left{width:45%;min-width:220px;max-width:75%}
 		.gallery-left iframe{width:100%;height:100%;border:0;display:block}
-
-		/* hide old inline resizer (we'll use the nicer gutter) */
-		#galleryResizer { display: none; }
-		
-		/* Gutter (vertical resizer) — same visual / behaviour as mdt.html */
-		#gutter {
-		  position: fixed;
-		  top: 0;
-		  height: 100vh;
-		  width: 12px;
-		  z-index: 10001;
-		  cursor: col-resize;
-		  user-select: none;
-		  -webkit-user-select: none;
-		  display: none;              /* shown only when gallery is open */
-		  align-items: center;
-		  justify-content: center;
-		  transition: background .12s;
-		}
-		#gutter:hover { background: rgba(255,255,255,0.03); }
-		
-		/* visible handle in the gutter (elegant center handle) */
-		#gutter .handle {
-		  width: 4px;
-		  height: 48px;
-		  border-radius: 4px;
-		  background: rgba(255,255,255,0.75);
-		  box-shadow: 0 6px 18px rgba(0,0,0,0.5);
-		  transform: translateX(0);
-		}
-
-		
+		#galleryResizer{width:8px;cursor:col-resize;background:rgba(0,0,0,0.06)}
 		.gallery-right{flex:1 1 0;min-width:300px;overflow:auto}
 		/* footer area below the split that will hold caption-container + thumbnails */
 		.gallery-bottom { margin-top: 8px; padding: 6px 0; width: 100%; box-sizing: border-box; }
@@ -681,15 +650,7 @@
 		/* keep apply button layout unchanged; it sits next to downloadKMLBtn as before */
 		#caption1 > div button { vertical-align: middle; }
 			
-
-/* ensure search results are clickable above transient overlays */
-#searchResult {
-  position: relative;
-  z-index: 10005; /* higher than typical gutter/overlay layers */
-  pointer-events: auto;
-}
-
-		
+			
 	</style>
 		
 </head>
@@ -1308,30 +1269,7 @@ function attachToLeft(leftEl) {
                         console.log("siteArray:", siteArray);
 						
                         // searchResult.innerHTML += '<br><span style="font-size:14px;cursor:pointer" onclick="openNav(\'' + json + '\')">' + resArr[0].site + '</span>';
-						
-// REPLACEMENT - creates real elements and wires click handler reliably
-var br = document.createElement('br');
-
-var sp = document.createElement('span');
-sp.style.cursor = 'pointer';
-sp.textContent = siteArray[0].site;
-// store index so handler knows what to open
-sp.dataset.index = String(indexArray);
-
-// direct listener — robust even if innerHTML parsing has issues
-sp.addEventListener('click', function (ev) {
-  ev.stopPropagation && ev.stopPropagation();
-  try {
-    openNav(Number(this.dataset.index));
-  } catch (err) {
-    console.error('openNav failed', err);
-  }
-});
-
-searchResult.appendChild(br);
-searchResult.appendChild(sp);
-
-						
+                        searchResult.innerHTML += '<br><span style="cursor:pointer" onclick="openNav(' + indexArray + ')">' + siteArray[0].site + '</span>';
                         indexArray = indexArray + 1;
 
                         // console.log(searchResult.innerHTML);
@@ -1520,14 +1458,6 @@ searchResult.appendChild(sp);
 				.replace("{thumbnails}", thumbnailsHTML);
 			  var fragment = document.createRange().createContextualFragment(htmlText);
 			  overlayEl.replaceChildren(fragment);
-
-				// after injecting gallery HTML
-				overlayEl.replaceChildren(fragment);
-				
-				// <<< ADD THIS LINE >>>
-				createGalleryGutter();
-				
-								
 			  console.debug('overlay-content replaced via fragment for', placemarkName);
 			  // NOTE: we no longer move or touch persistentMapFrame here. positioning is done by wrapGalleryWithMap.
 			}
@@ -3071,210 +3001,6 @@ function closeNav() {
 	})();	
 
 
-/* REPLACE your old createGalleryGutter() with THIS improved, robust version.
-   - Uses pointer events
-   - Guarantees cleanup on pointerup/pointercancel/blur/visibilitychange
-   - Returns the gutter node and exposes removeGalleryGutter()
-*/
-function createGalleryGutter() {
-  try {
-    // clean up any existing gutter/capture first
-    removeGalleryGutter();
-
-    var right = document.querySelector('.gallery-right');
-    if (!right) { console.warn('createGalleryGutter: .gallery-right not found'); return null; }
-
-    // create gutter
-    var gutterW = 12;
-    var gutter = document.createElement('div');
-    gutter.id = 'gutter';
-    gutter.style.position = 'fixed';
-    gutter.style.top = '0';
-    gutter.style.height = '100vh';
-    gutter.style.width = gutterW + 'px';
-    gutter.style.zIndex = 10001;
-    gutter.style.display = 'flex';
-    gutter.style.alignItems = 'center';
-    gutter.style.justifyContent = 'center';
-    gutter.style.cursor = 'col-resize';
-    gutter.style.userSelect = 'none';
-    gutter.style.pointerEvents = 'auto';
-
-    var handle = document.createElement('div');
-    handle.className = 'handle';
-    // keep handle styling in CSS; fallback inline
-    handle.style.width = '4px';
-    handle.style.height = '48px';
-    handle.style.borderRadius = '4px';
-    handle.style.transform = 'translateX(0)';
-    gutter.appendChild(handle);
-
-    // position gutter initially based on right pane width
-    var initialRightWidth = parseInt(right.style.width, 10) || right.getBoundingClientRect().width || Math.floor(window.innerWidth * 0.5);
-    gutter.style.left = (window.innerWidth - initialRightWidth - Math.floor(gutterW/2)) + 'px';
-
-    document.body.appendChild(gutter);
-
-    // dragging state
-    var dragging = false;
-    var startX = 0;
-    var startRightWidth = initialRightWidth;
-    var dragCapture = null;
-
-    // create capture layer lazily (only while dragging)
-    function makeCapture() {
-      if (dragCapture) return dragCapture;
-      dragCapture = document.createElement('div');
-      dragCapture.id = 'dragCapture';
-      dragCapture.style.position = 'fixed';
-      dragCapture.style.top = '0';
-      dragCapture.style.left = '0';
-      dragCapture.style.width = '100%';
-      dragCapture.style.height = '100%';
-      dragCapture.style.zIndex = 10003; // above gutter
-      dragCapture.style.background = 'transparent';
-      // pointer events must be auto while dragging to capture all pointers
-      dragCapture.style.pointerEvents = 'auto';
-      document.body.appendChild(dragCapture);
-      return dragCapture;
-    }
-
-    // helper to remove capture
-    function removeCapture() {
-      if (dragCapture && dragCapture.parentNode) {
-        dragCapture.parentNode.removeChild(dragCapture);
-        dragCapture = null;
-      }
-    }
-
-    function clampRightWidth(w) {
-      var minRight = 200;   // adjust if needed
-      var minLeft = 200;
-      var maxRight = Math.max(minRight, window.innerWidth - minLeft);
-      if (w < minRight) return minRight;
-      if (w > maxRight) return maxRight;
-      return w;
-    }
-
-    function startDrag(ev) {
-      // use pointer events
-      ev.preventDefault && ev.preventDefault();
-      dragging = true;
-      startX = ev.clientX;
-      startRightWidth = parseInt(right.style.width, 10) || right.getBoundingClientRect().width || startRightWidth;
-
-      // create capture so iframes won't steal the pointer
-      var cap = makeCapture();
-      // set pointer capture on the capture layer to ensure we always get pointerup
-      if (ev.pointerId && cap.setPointerCapture) {
-        try { cap.setPointerCapture && cap.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
-      }
-
-      cap.addEventListener('pointermove', onMove, { passive: false });
-      // also handle pointerup on the capture itself
-      cap.addEventListener('pointerup', stopDrag, false);
-      cap.addEventListener('pointercancel', stopDrag, false);
-
-      // window-level safety listeners
-      window.addEventListener('pointerup', stopDrag, false);
-      window.addEventListener('blur', stopDrag, false);
-      document.addEventListener('visibilitychange', onVisibilityChange, false);
-
-      gutter.style.background = 'rgba(255,255,255,0.03)';
-    }
-
-    function onMove(ev) {
-      if (!dragging) return;
-      ev.preventDefault && ev.preventDefault();
-      var clientX = ev.clientX;
-      var dx = startX - clientX;
-      var newRightWidth = startRightWidth + dx;
-      newRightWidth = clampRightWidth(newRightWidth);
-
-      right.style.width = newRightWidth + 'px';
-      // reposition gutter
-      gutter.style.left = (window.innerWidth - newRightWidth - Math.floor(gutterW/2)) + 'px';
-    }
-
-    function stopDrag(ev) {
-      // defensive: only run teardown once
-      if (!dragging && !dragCapture) return;
-      dragging = false;
-      gutter.style.background = 'transparent';
-
-      // remove capture and its listeners
-      if (dragCapture) {
-        try {
-          dragCapture.removeEventListener('pointermove', onMove);
-          dragCapture.removeEventListener('pointerup', stopDrag);
-          dragCapture.removeEventListener('pointercancel', stopDrag);
-        } catch (e) {}
-      }
-      removeCapture();
-
-      // remove safety listeners
-      window.removeEventListener('pointerup', stopDrag, false);
-      window.removeEventListener('blur', stopDrag, false);
-      document.removeEventListener('visibilitychange', onVisibilityChange, false);
-
-      // small timeout to ensure repaint before finishing
-      setTimeout(function(){ /* no-op, just ensures UI settles */ }, 0);
-    }
-
-    function onVisibilityChange() {
-      if (document.hidden) stopDrag();
-    }
-
-    // wire pointerdown on the gutter to start
-    gutter.addEventListener('pointerdown', function (ev) {
-      // only left-button or touch (button===0). pointerdown for touch/mouse unify anyway.
-      if (ev.button !== undefined && ev.button !== 0) return;
-      startDrag(ev);
-    }, false);
-
-    // also allow handle to start drag (redundant)
-    handle.addEventListener('pointerdown', function (ev) {
-      if (ev.button !== undefined && ev.button !== 0) return;
-      startDrag(ev);
-    }, false);
-
-    // expose a small helper on DOM so other code can remove the gutter when closing gallery
-    gutter._cleanup = removeGalleryGutter;
-
-    return gutter;
-  } catch (err) {
-    console.warn('createGalleryGutter failed', err);
-    return null;
-  }
-}
-
-
-/* removeGalleryGutter()
-   - Safe removal of gutter & drag capture elements and listeners
-   - Call this when you close the gallery or re-create it
-*/
-function removeGalleryGutter() {
-  try {
-    var g = document.getElementById('gutter');
-    if (g && g._cleanup) g._cleanup = null;
-    if (g && g.parentNode) g.parentNode.removeChild(g);
-
-    var cap = document.getElementById('dragCapture');
-    if (cap && cap.parentNode) cap.parentNode.removeChild(cap);
-
-    // extra clean: remove possible stray listeners (best-effort)
-    window.removeEventListener('pointerup', stopDrag, false);
-    window.removeEventListener('blur', stopDrag, false);
-    document.removeEventListener('visibilitychange', onVisibilityChange, false);
-  } catch (e) { /* ignore */ }
-}
-
-
-// Safety: remove stray drag-capture if left behind
-window.addEventListener('pointerup', ()=>{ const c=document.getElementById('dragCapture'); if(c) c.remove(); }, true);
-window.addEventListener('blur',      ()=>{ const c=document.getElementById('dragCapture'); if(c) c.remove(); }, true);
-document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ const c=document.getElementById('dragCapture'); if(c) c.remove(); } }, true);
-		
 		
     </script>
 </body>
