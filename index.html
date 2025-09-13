@@ -681,7 +681,15 @@
 		/* keep apply button layout unchanged; it sits next to downloadKMLBtn as before */
 		#caption1 > div button { vertical-align: middle; }
 			
-			
+
+/* ensure search results are clickable above transient overlays */
+#searchResult {
+  position: relative;
+  z-index: 10005; /* higher than typical gutter/overlay layers */
+  pointer-events: auto;
+}
+
+		
 	</style>
 		
 </head>
@@ -1300,7 +1308,30 @@ function attachToLeft(leftEl) {
                         console.log("siteArray:", siteArray);
 						
                         // searchResult.innerHTML += '<br><span style="font-size:14px;cursor:pointer" onclick="openNav(\'' + json + '\')">' + resArr[0].site + '</span>';
-                        searchResult.innerHTML += '<br><span style="cursor:pointer" onclick="openNav(' + indexArray + ')">' + siteArray[0].site + '</span>';
+						
+// REPLACEMENT - creates real elements and wires click handler reliably
+var br = document.createElement('br');
+
+var sp = document.createElement('span');
+sp.style.cursor = 'pointer';
+sp.textContent = siteArray[0].site;
+// store index so handler knows what to open
+sp.dataset.index = String(indexArray);
+
+// direct listener — robust even if innerHTML parsing has issues
+sp.addEventListener('click', function (ev) {
+  ev.stopPropagation && ev.stopPropagation();
+  try {
+    openNav(Number(this.dataset.index));
+  } catch (err) {
+    console.error('openNav failed', err);
+  }
+});
+
+searchResult.appendChild(br);
+searchResult.appendChild(sp);
+
+						
                         indexArray = indexArray + 1;
 
                         // console.log(searchResult.innerHTML);
@@ -3237,6 +3268,12 @@ function removeGalleryGutter() {
     document.removeEventListener('visibilitychange', onVisibilityChange, false);
   } catch (e) { /* ignore */ }
 }
+
+
+// Safety: remove stray drag-capture if left behind
+window.addEventListener('pointerup', ()=>{ const c=document.getElementById('dragCapture'); if(c) c.remove(); }, true);
+window.addEventListener('blur',      ()=>{ const c=document.getElementById('dragCapture'); if(c) c.remove(); }, true);
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ const c=document.getElementById('dragCapture'); if(c) c.remove(); } }, true);
 		
 		
     </script>
