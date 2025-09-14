@@ -632,6 +632,98 @@
 
   <script>
 
+	/* showNotification - displays "from backend: " + text for 3 seconds */
+	console.log('backend ready');
+
+
+	/* postMessage fallback (use origin check in production) */
+	window.addEventListener('message', function(ev) {
+	  // IMPORTANT: in production replace '*' below with allowed origin and check ev.origin  	  
+    console.log('message received', ev.origin, ev.data);
+    
+	  var data = ev.data || {};
+	  try {
+		if (data && data.type === 'search') {
+		  //window.showNotification(data.text);
+		  window.sitesearch(data.text);
+		}
+	  } catch (e) { /* ignore malformed messages */ }
+	}, false);
+
+
+
+  window.sitesearch = async function searchsite2(text) {
+      const term = (text || '').trim().toLowerCase();
+
+
+      try {
+        // 1) primary: search active DB
+        let matches = await db.sites
+          .filter(function(s){
+            // defensive: ensure properties exist
+            const sid = (s.siteId || '').toString().toLowerCase();
+            const sname = (s.sitename || '').toString().toLowerCase();
+            return sid.indexOf(term) !== -1 || sname.indexOf(term) !== -1;
+          })
+          .toArray();
+
+        // 2) if no DB match and background streaming is active (or usingTempMemory),
+        //    also check tempMemory (fast, in-memory)
+        if ((!matches || matches.length === 0) && (bgRunning || usingTempMemory)) {
+          const tempMatches = [];
+          tempMemory.forEach(r => {
+            const sid = (r.siteId || '').toString().toLowerCase();
+            const sname = (r.sitename || '').toString().toLowerCase();
+            if (sid.indexOf(term) !== -1 || sname.indexOf(term) !== -1) {
+              tempMatches.push(r);
+            }
+          });
+          if (tempMatches.length) {
+            matches = tempMatches;
+          }
+        }
+
+        allMatches = matches || [];
+
+        if (allMatches.length === 0) {
+          resultsList.innerHTML    = '<li>No results</li>';
+          paginationDiv.innerHTML  = '';
+          showSearchResultsAtPanel();
+          return 'site not found';
+        }
+
+        if (allMatches.length === 1) {
+          const site = allMatches[0];
+          map.setView([site.lat, site.lon], +zoomSlider.value);
+          site.azimuths = (String(site.azRaw || '')).split(';')
+                            .map(Number).filter(function(n){return !isNaN(n);});
+          currentSites = [site];
+          drawAllSectors();
+
+          sr.style.display = 'none';
+          //setPanelCollapsed(false);
+          return 'site found';
+        }
+
+        // multiple matches -> render list (existing behaviour)
+        currentPage = 1;
+        renderResults();
+
+      } catch (err) {
+        console.error('search error', err);
+        resultsList.innerHTML = '<li>Error</li>';
+        paginationDiv.innerHTML = '';
+        showSearchResultsAtPanel();
+      }
+
+      return 'ok'
+
+    };
+
+
+
+
+
 	  const LOCAL_DATA_URL = 'sites.json';
       // ---- GAS environment detector so that index.html can be edited thru local server
       // 1) Detect GAS web-app context
@@ -3037,30 +3129,24 @@ function showContext(e, isFeature) {
 /* Reusable function: go to siteId (ES5) */
 function gotoSiteById(siteId) {
   if (!siteId) return;
+  // normalize
   var term = String(siteId).trim().toLowerCase();
-  // Query local DB and go to first match (same behavior as ctx search)
+
+  // Query local DB and go to first match (same behavior as your context search)
   db.sites.filter(function (s) {
-    return ((s.siteId || '').toLowerCase().indexOf(term) !== -1) ||
-           ((s.sitename || '').toLowerCase().indexOf(term) !== -1);
+    return (s.siteId || '').toLowerCase().indexOf(term) !== -1 ||
+           (s.sitename || '').toLowerCase().indexOf(term) !== -1;
   }).toArray().then(function (matches) {
     if (matches && matches.length > 0) {
       var site = matches[0];
-      try {
-        map.setView([site.lat, site.lon], +zoomSlider.value);
-      } catch (e) { console.warn('map.setView failed', e); }
+      map.setView([site.lat, site.lon], +zoomSlider.value);
       site.azimuths = (String(site.azRaw || '')).split(';')
-                         .map(function(n){ return parseFloat(n); })
-                         .filter(function(n){ return !isNaN(n); });
+                       .map(function(n){ return parseFloat(n); })
+                       .filter(function(n){ return !isNaN(n); });
       currentSites = [site];
-      try { drawAllSectors(); } catch (e) { console.warn('drawAllSectors failed', e); }
+      drawAllSectors();
     } else {
-      // quick UI hint if not found
-      try {
-        if (typeof ctxSearch !== 'undefined') {
-          ctxSearch.style.borderColor = 'red';
-          setTimeout(function(){ ctxSearch.style.borderColor = ''; }, 800);
-        }
-      } catch(e){}
+      // optional: small visual feedback if not found
       console.warn('gotoSiteById: not found', siteId);
     }
   }).catch(function(err){
@@ -3068,20 +3154,20 @@ function gotoSiteById(siteId) {
   });
 }
 
-/* postMessage listener: accepts { type: 'gotoSite', siteId: 'SITE123' } or "goto:SITE123" */
-window.addEventListener('message', function (ev) {
+
+
+/* Optional: notify parent that iframe is ready (useful so parent waits before sending) */
+function notifyParentReady() {
   try {
-    var data = ev && ev.data ? ev.data : null;
-    if (!data) return;
-    if (typeof data === 'object' && data.type === 'gotoSite' && data.siteId) {
-      gotoSiteById(data.siteId);
-    } else if (typeof data === 'string' && data.indexOf && data.indexOf('goto:') === 0) {
-      gotoSiteById(data.split(':')[1]);
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'btsmapReady' }, '*'); // replace '*' with parent origin if known
     }
-  } catch (e) {
-    console.error('message handler failed', e);
-  }
-}, false);
+  } catch (e) {}
+}
+document.addEventListener('DOMContentLoaded', function(){ notifyParentReady(); });
+
+
+
 
 /* Query param fallback: if loaded with ?siteid=XXX call gotoSiteById */
 (function () {
