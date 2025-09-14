@@ -417,48 +417,32 @@
             float: left;
         }
 
-        /* .row:after {
-      content: "";
-      display: table;
-      clear: both;
-    }
-  
-  
-    .column {
-      float: left;
-      width: 16.66%;
-    }
-    
-    .demo {
-      opacity: 0.6;
-    } */
-
-        /* Container for image captions */
+        
         .row {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: left;
-            /* Align items in the center horizontally */
-            gap: 10px;
-            /* Add some space between columns */
+        display: grid;
+        grid-template-columns: repeat(16, 1fr); /* always reserve 16 slots per row */
+        gap: 10px;
+        justify-items: start;
+        align-items: start;
+        /* keeps other layout behavior minimal */
         }
 
-        /* Caption image container */
         .column {
-            width: 100px;
-            /* Fixed width of 100 pixels */
-            flex: 0 0 auto;
-            /* Ensure the width remains fixed */
+        width: 100%;           /* grid cell fills its column */
+        aspect-ratio: 1 / 1;   /* make each column square */
+        overflow: hidden;      /* crop image if needed */
+        position: relative;    /* needed for tooltip positioning */
+        box-sizing: border-box;
         }
 
-        /* Add a transparency effect for thumbnail images */
         .demo {
-            opacity: 0.6;
-            width: 100%;
-            /* Ensure the image fills the column */
-            height: auto;
-            /* Maintain aspect ratio */
+        display: block;
+        width: 100%;
+        height: 100%;          /* fill the square column */
+        object-fit: cover;     /* preserve cover-looking thumbnails */
+        opacity: 0.6;
         }
+
 
         .active,
         .demo:hover {
@@ -751,7 +735,62 @@
   object-fit: contain;
   display: block;
 }
-		
+
+
+/* Make arrows position relative to the gallery pane, not the slide container */
+.gallery-right { position: relative; }
+
+/* Prevent the inner .container from being the positioned ancestor */
+.gallery-right > .container,
+.gallery-right .container { position: static; }
+
+/* Keep arrow positioning scoped to the gallery pane (rest of .prev/.next rules stay) */
+.gallery-right .prev,
+.gallery-right .next {
+  /* preserve existing arrow sizing/visuals from your stylesheet */
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+}
+
+
+
+
+
+
+
+/* ZOOM button (bottom-right of .gallery-right) */
+.gallery-right .zoomBtn {
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
+  z-index: 10000;
+  font-size: 13px;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  border: none;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Magnifier square (300×300). Appended into overlay-content */
+.overlay-content .magnifier {
+  position: absolute;
+  width: 300px;
+  height: 300px;
+  pointer-events: none;              /* do not block mouse events */
+  border: 2px solid rgba(255,255,255,0.9);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+  z-index: 10001;
+  display: none;
+  background-repeat: no-repeat;
+  overflow: hidden;
+}
+
+
+
 	</style>
 		
 </head>
@@ -1608,6 +1647,9 @@ function attachToLeft(leftEl) {
 				.replace("{thumbnails}", thumbnailsHTML);
 			  var fragment = document.createRange().createContextualFragment(htmlText);
 			  overlayEl.replaceChildren(fragment);
+
+              if (window._qtdInitZoom) window._qtdInitZoom();
+
 			  console.debug('overlay-content replaced via fragment for', placemarkName);
 			  // NOTE: we no longer move or touch persistentMapFrame here. positioning is done by wrapGalleryWithMap.
 			}
@@ -2400,7 +2442,8 @@ if (trimmed === 'ok') {
 
 
 				if (footer.childNodes.length) overlay.appendChild(footer);
-
+                if (window._qtdInitZoom) window._qtdInitZoom();
+                
 				overlay.__mapWrapped = true;
 
 
@@ -2543,7 +2586,8 @@ if (trimmed === 'ok') {
 		
 
 
-		
+
+
 function closeNav() {
   try {
     // Pause gallery resizer saves while the overlay animates closed.
@@ -2611,6 +2655,127 @@ try {
                 tooltip.textContent = altText;
             });
         });
+
+
+
+
+        (function(){
+  const levels = [4,5,1,2,3];
+  // start with '3x' by default
+  let idx = levels.indexOf(3);
+  if (idx < 0) idx = levels.length - 1;
+
+  function ensureZoomButton() {
+    const gallery = document.querySelector('.gallery-right');
+    if (!gallery) return;
+    let btn = gallery.querySelector('.zoomBtn');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.className = 'zoomBtn';
+      btn.textContent = levels[idx] + 'x';
+      gallery.appendChild(btn);
+    }
+    btn.addEventListener('click', function () {
+      idx = (idx + 1) % levels.length;
+      btn.textContent = levels[idx] + 'x';
+    }, { passive: true });
+  }
+
+  // wire magnifier for current overlay slides
+  function ensureMagnifierAndWireImages() {
+    const overlay = document.querySelector('.overlay-content');
+    if (!overlay) return;
+    // create magnifier element under overlay-content if missing
+    let mag = overlay.querySelector('.magnifier');
+    if (!mag) {
+      mag = document.createElement('div');
+      mag.className = 'magnifier';
+      overlay.appendChild(mag);
+    }
+    mag.style.display = 'none';
+
+    // helper to attach to each slide image (idempotent)
+    const imgs = overlay.querySelectorAll('.mySlides img');
+    imgs.forEach(function(img){
+      // avoid re-binding multiple times
+      if (img.__qtdMagnifierBound) return;
+      img.__qtdMagnifierBound = true;
+
+      function onEnter() {
+        mag.style.display = 'block';
+        mag.style.backgroundImage = `url('${img.src}')`;
+      }
+      function onLeave() {
+        mag.style.display = 'none';
+      }
+      function onMove(e) {
+        const rect = img.getBoundingClientRect();
+        // hide if pointer outside image area
+        if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+          mag.style.display = 'none';
+          return;
+        }
+        mag.style.display = 'block';
+        const dispW = rect.width || 1;
+        const dispH = rect.height || 1;
+        const natW = img.naturalWidth || dispW;
+        const natH = img.naturalHeight || dispH;
+
+        const offsetX = Math.max(0, Math.min(dispW, e.clientX - rect.left));
+        const offsetY = Math.max(0, Math.min(dispH, e.clientY - rect.top));
+
+        const zoom = levels[idx] || 3;
+        const bgW = natW * zoom;
+        const bgH = natH * zoom;
+
+        // map displayed offset -> natural coordinate
+        const naturalX = offsetX * (natW / dispW);
+        const naturalY = offsetY * (natH / dispH);
+
+        const magSize = 300;
+        const half = magSize / 2;
+
+        // background-position so the natural pixel sits at mag center
+        const bgPosX = -naturalX * zoom + half;
+        const bgPosY = -naturalY * zoom + half;
+
+        mag.style.backgroundSize = `${bgW}px ${bgH}px`;
+        mag.style.backgroundPosition = `${bgPosX}px ${bgPosY}px`;
+
+        // position magnifier inside overlay-content
+        const overlayRect = overlay.getBoundingClientRect();
+        let left = e.clientX - overlayRect.left - half;
+        let top  = e.clientY - overlayRect.top  - half;
+
+        // clamp so magnifier stays inside overlay-content
+        left = Math.max(0, Math.min(overlayRect.width - magSize, left));
+        top  = Math.max(0, Math.min(overlayRect.height - magSize, top));
+
+        mag.style.left = left + 'px';
+        mag.style.top  = top + 'px';
+      }
+
+      img.addEventListener('mouseenter', onEnter, { passive: true });
+      img.addEventListener('mouseleave', onLeave, { passive: true });
+      img.addEventListener('mousemove', onMove, { passive: true });
+      img.addEventListener('touchstart', onEnter, { passive: true });
+      img.addEventListener('touchend', onLeave, { passive: true });
+      img.addEventListener('touchmove', function(ev){
+        if (ev.touches && ev.touches[0]) onMove(ev.touches[0]);
+      }, { passive: true });
+    });
+  }
+
+  // public initializer called from createGalery() after overlay content is replaced
+  window._qtdInitZoom = function() {
+    try {
+      ensureZoomButton();
+      ensureMagnifierAndWireImages();
+    } catch (e) {
+      console.error('qtd zoom init failed', e);
+    }
+  };
+})();
 
     </script>
 
