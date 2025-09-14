@@ -28,18 +28,6 @@
 	
     <script>
         // This line declares a variable called "url" and assigns it a value of "Api_Endpoint_Url"
-        // deployment remarks: 1.25 custom emailcc Kal and CJ
-        //let url = "https://script.google.com/macros/s/AKfycbwyS3ETZFJf2hMZhi7LhmhQ4etDvgEOjgeIy_RvAH71q6Ub1YI8i7nzX5lIbeAdPs3c0g/exec";
-        // deployment remarks: 1.26 add mailing list CJ Kalimantan
-        //let url = "https://script.google.com/macros/s/AKfycbz-ZYHuUXE0_bz4ifwpsTZUk7pp3lfGZItL5D4oYhujSSX7TdFFtkyR8jNoaTNXN8x_eQ/exec";
-        // deployment remarks: 1.27 add mailing list SS
-        //let url = "https://script.google.com/macros/s/AKfycbz_he-H_wSOYyP0a_qv_PNc2XOPvN0MCrPZIxh0YlfnhmZUlzz0mmoCb_t4ah1sehnJ0w/exec";
-		// deployment remarks: 1.28 efficient search
-        //let url = "https://script.google.com/macros/s/AKfycbw15mK5uxYETdRb3iKUUULz_VDXtJCmCUvEdX36KYH5f69WIotk6ZVx039kmxXz9KY1OQ/exec";
-		//let url = "https://script.google.com/macros/s/AKfycbxUbORlCPRCtAxec2UAyusvSJ3mWyiu-HmFHOP2oToVGy4lyy-lvePBecvUxM5Frcwz-A/exec";
-		// deployment remarks: 3.1 new script
-		// let url ="https://script.google.com/macros/s/AKfycbzHQ6Xe2ZlWkkxFYBos3YgrDClm7tBlvjCRyc6EqkiZ26uV2FTviiILofNtu7CxZUZN/exec";
-		//let url ="https://script.google.com/macros/s/AKfycbyReu2avCWcEQLkZbgCtS6KR3q_ebP96fbIDaMWLZCZV_iddxmj7nx-zbxzQOdTLVhc/exec";
 		let url="https://script.google.com/macros/s/AKfycbx9XIxZUWkN85duC7IB-2HnX3khkbQ-1H1_y0x-GHKDBC6sQUPI85sdm43967IzeDlJ/exec";
 		
 		
@@ -839,6 +827,50 @@
 
     <script>
 
+
+	/* Wait for iframe ready, set flag, and flush queued messages */
+	window._btsMapReady = window._btsMapReady || false;
+	window._btsMapPending = window._btsMapPending || [];
+
+	window.addEventListener('message', function (ev) {
+	  try {
+		var d = ev && ev.data ? ev.data : null;
+		console.log('parent <- message', d, 'origin', ev && ev.origin);
+		if (!d) return;
+
+		if (d && d.type === 'btsmapReady') {
+		  window._btsMapReady = true;
+		  console.log('parent: btsmapReady - flushing', window._btsMapPending.length, 'messages');
+		  var ifr = document.getElementById('persistentMapFrame');
+		  if (ifr && ifr.contentWindow) {
+			while (window._btsMapPending.length) {
+			  var p = window._btsMapPending.shift();
+			  try {
+				ifr.contentWindow.postMessage(p, '*');
+				console.log('parent: flushed', p);
+			  } catch (e) {
+				console.error('parent: flush postMessage failed', e, p);
+				// put back and stop trying
+				window._btsMapPending.unshift(p);
+				break;
+			  }
+			}
+		  }
+		  return;
+		}
+
+		// optional: an ack from iframe after goto
+		if (d && d.type === 'gotoAck') {
+		  console.log('parent: got gotoAck for', d.siteId || d.siteid);
+		}
+	  } catch (e) {
+		console.error('parent message handler error', e);
+	  }
+	}, false);
+
+
+
+
 // Auto-fit helper (ES5). Paste once in your script (global scope).
 		(function () {
 		  if (window.__qtdMapAutoFit) return;
@@ -932,9 +964,9 @@
 		  iframe.allow = 'clipboard-write; clipboard-read; geolocation; microphone; camera; accelerometer; gyroscope; autoplay';
 		  iframe.style.width = '100%';
 		  iframe.style.height = '100%';
-		  iframe.style.border = '0';
+		  iframe.style.border = '0';		  
 		  // load base map once (do not change src later)
-		  iframe.src = 'https://script.google.com/macros/s/AKfycbzRqvHkbVemjgnMgWy98UbscgRM9KECE3JUC5f2pAZyyitQrS3uqyNnu8GpJ2WyJiHDZA/exec';
+		  iframe.src = './btsmapsplit.html';
 		  // optional ready flag
 		  iframe.addEventListener('load', function () {
 			iframe.dataset.ready = '1';
@@ -943,6 +975,9 @@
 
 		  holder.appendChild(iframe);
 
+
+			
+		
 		  // public API to show/hide and set site via postMessage
 		  window.__qtdPersistentMap = {
 			holder: holder,
@@ -955,12 +990,13 @@
 			  holder.style.height = (rect.height | 0) + 'px';
 			  holder.style.zIndex = 9998;
 			  holder.style.display = 'block';
-			  try {
-				if (iframe.contentWindow && typeof iframe.contentWindow.postMessage === 'function') {
-				  iframe.contentWindow.postMessage({ type: 'setSite', siteid: siteid }, '*');
-				  iframe.dataset.lastSite = siteid || '';
-				}
-			  } catch (e) { console.warn('postMessage failed', e); }
+			  // try {
+				// if (iframe.contentWindow && typeof iframe.contentWindow.postMessage === 'function') {
+				//   iframe.contentWindow.postMessage({ type: 'setSite', siteid: siteid }, '*');
+        //   console.log('debug 3');
+				//   iframe.dataset.lastSite = siteid || '';
+				// }
+			  // } catch (e) { console.warn('postMessage failed', e); }
 			},
 			hide: function () {
 			  holder.style.display = 'none';
@@ -1449,7 +1485,7 @@ function attachToLeft(leftEl) {
 
 							console.log("updatedMixed:", updatedMixed);
 				
-							openNav(0);
+							//openNav(0);
 						})(); // <--- this is an immediately-invoked async function expression (IIFE)
 					}
 					
@@ -1508,6 +1544,7 @@ function attachToLeft(leftEl) {
 			currentGalleryIndex = idx;
             resArr = resultArray[idx];
             //console.log('openNav resArr:' + resArr);
+
             createGalery();
 
             slideIndex = 1;
@@ -2222,11 +2259,14 @@ if (trimmed === 'ok') {
 					console.debug('wrapGalleryWithMap: attaching persistent map into gallery (site=', rawSiteid, ')');
 					mapNode.dataset.lastAttached = Date.now();
 
+					
 				  // helper to safely attempt postMessage
 				  function tryPostMessageOnce() {
 					try {
 					  if (mapNode.contentWindow && typeof mapNode.contentWindow.postMessage === 'function') {
-						mapNode.contentWindow.postMessage({ type: 'setSite', siteid: rawSiteid }, '*');
+						//mapNode.contentWindow.postMessage({ type: 'setSite', siteid: rawSiteid }, '*');
+            console.log('test postmessage site='+rawSiteid);
+            mapNode.contentWindow.postMessage({ type: 'search', text: rawSiteid }, '*');
 						mapNode.dataset.lastSite = rawSiteid || '';
 						return true;
 					  }
@@ -2235,6 +2275,20 @@ if (trimmed === 'ok') {
 					}
 					return false;
 				  }
+
+// console.log('test start site='+rawSiteid);
+	
+//   try {
+//     mapNode.contentWindow.sitesearch(rawSiteid);
+//     console.log('search cara 1');
+//   } catch (err) {
+//     mapNode.contentWindow.postMessage({ type: 'search', text: rawSiteid }, '*');
+//     console.log('search cara 2');
+//   }
+  
+// console.log('test end');
+
+
 
 					// If postMessage didn't succeed immediately, wait for the persistent iframe's load and try again.
 					// IMPORTANT: do NOT change mapNode.src or create a short-lived iframe — that causes reloads.
@@ -2255,13 +2309,13 @@ if (trimmed === 'ok') {
 				  // If persistent iframe does not yet exist (rare), create it synchronously once.
 				  if (!persistent) {
 					persistent = document.createElement('iframe');
-					persistent.id = 'persistentMapFrame';
+					persistent.id = 'persistentMapFrame';					
 					persistent.style.display = 'none';
 					persistent.style.width = '100%';
 					persistent.style.height = '100%';
 					persistent.allow = 'clipboard-write; clipboard-read; geolocation; microphone; camera; accelerometer; gyroscope; autoplay';
 					// load base map once (no site param) — created only once
-					persistent.src = 'https://script.google.com/macros/s/AKfycbzRqvHkbVemjgnMgWy98UbscgRM9KECE3JUC5f2pAZyyitQrS3uqyNnu8GpJ2WyJiHDZA/exec';
+					persistent.src = './btsmapsplit.html';
 					persistent.addEventListener('load', function () { persistent.dataset.ready = '1'; }, { once: true });
 					(document.body || document.documentElement).appendChild(persistent);
 				  }
@@ -2274,19 +2328,20 @@ if (trimmed === 'ok') {
 					console.debug('wrapGalleryWithMap: attaching persistent map into gallery (site=', rawSiteid, ')');
 					mapNode.dataset.lastAttached = Date.now();
 
-				  // Attempt to instruct the map to switch site via postMessage (non-reloading).
-				  try {
-					if (mapNode.contentWindow && typeof mapNode.contentWindow.postMessage === 'function') {
-					  mapNode.contentWindow.postMessage({ type: 'setSite', siteid: rawSiteid }, '*');
-					  mapNode.dataset.lastSite = rawSiteid || '';
-					} else {
-					  // If postMessage not yet available, we do nothing here (no src change).
-					  // The persistent iframe will remain loaded and available instantly on next open.
-					  console.warn('persistent iframe present but contentWindow/postMessage not ready yet');
-					}
-				  } catch (err) {
-					console.warn('postMessage to persistent iframe failed', err);
-				  }
+				  // // Attempt to instruct the map to switch site via postMessage (non-reloading).
+				  // try {
+					// if (mapNode.contentWindow && typeof mapNode.contentWindow.postMessage === 'function') {
+					//   mapNode.contentWindow.postMessage({ type: 'setSite', siteid: rawSiteid }, '*');
+					//   mapNode.dataset.lastSite = rawSiteid || '';
+          //   console.log('debug 1');
+					// } else {
+					//   // If postMessage not yet available, we do nothing here (no src change).
+					//   // The persistent iframe will remain loaded and available instantly on next open.
+					//   console.warn('persistent iframe present but contentWindow/postMessage not ready yet');
+					// }
+				  // } catch (err) {
+					// console.warn('postMessage to persistent iframe failed', err);
+				  // }
 				}
 
 
@@ -3267,7 +3322,8 @@ try {
 	})();	
 
 
-		
+
+	
     </script>
 </body>
 
