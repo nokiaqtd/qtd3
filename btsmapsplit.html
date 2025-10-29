@@ -544,10 +544,10 @@
       <div class="row" style="width:100%">
         <label style="flex:1">Sector style
           <select id="themeSelect" style="margin-top:6px">
-            <option value="1" selected>1: blue red yellow</option>
+            <option value="1" >1: blue red yellow</option>
             <option value="2">2: random</option>
             <option value="3">3: green</option>
-            <option value="4">4: invisible</option>
+            <option value="4" selected>4: transparent</option>
           </select>
         </label>
         <label style="width:120px">Map
@@ -1431,7 +1431,7 @@
     }
 
     //const sites=[{siteid:'SITE-1',sitename:'Central Jakarta Node',lat:-6.2,lng:106.816,azimuths:[60,180,300]}];
-    const sectorHalfAngle=20; let range=100, currentTheme='1';
+    const sectorHalfAngle=20; let range=100, currentTheme='4';
     let siteColors={}, sectorLayers={};
     let siteMarkers = [];
     let currentSites = [];
@@ -2355,36 +2355,37 @@ if (typeof s.panelCollapsed !== 'undefined') {
 
     site.azimuths.forEach((azRaw, idx) => {
       // coerce az to number (fixes "120" string issues)
+      const theme4 = (currentTheme === '4');
       const az = Number(azRaw);
-      const color = opts.color || getColor(site, idx);
+      const color = getColor(site, idx);
       //console.groupCollapsed(` sector idx=${idx} rawAz=${azRaw} coercedAz=${az} color=${color}`);
       if (!color) { console.debug('  no color, skipping sector'); console.groupEnd(); return; }
       if (!isFinite(az)) { console.debug('  az is not numeric -> skipping', azRaw); console.groupEnd(); return; }
 
       const beamsForSector = Number(beamCounts[idx] || 0);
       //console.debug('  beamsForSector:', beamsForSector);
-
-      // draw beam arrows first so sectors are above them
-      if (beamsForSector > 1) {
-        if (az === 360) {
-          // full-circle: irrelevant
-
+      if (!theme4) {
+        // draw beam arrows first so sectors are above them
+        if (beamsForSector > 1) {
+          if (az === 360) {
+            // full-circle: irrelevant
+  
+          } else {
+            const beamAngles = generateBeamAngles(az, beamsForSector, sectorHalfAngle);
+            //console.debug('   beamAngles:', beamAngles);
+            beamAngles.forEach((beamAz, bi) => {
+              //console.debug(`   draw beam ${bi} az=${beamAz}`);
+              const arrowLayer = drawBeamArrow(site, beamAz, range * opts.lengthMultiplier, { color, weight: opts.weight });            
+              if (arrowLayer) {              
+                sectorLayer.addLayer(arrowLayer);
+                layers.push(arrowLayer);
+              }            
+            });
+          }
         } else {
-          const beamAngles = generateBeamAngles(az, beamsForSector, sectorHalfAngle);
-          //console.debug('   beamAngles:', beamAngles);
-          beamAngles.forEach((beamAz, bi) => {
-            //console.debug(`   draw beam ${bi} az=${beamAz}`);
-            const arrowLayer = drawBeamArrow(site, beamAz, range * opts.lengthMultiplier, { color, weight: opts.weight });            
-            if (arrowLayer) {              
-              sectorLayer.addLayer(arrowLayer);
-              layers.push(arrowLayer);
-            }            
-          });
+          //console.debug('   no beams for this sector');
         }
-      } else {
-        //console.debug('   no beams for this sector');
       }
-
 
 const outerOutlineColor = '#fff';
 const innerOutlineColor = '#000';
@@ -2426,13 +2427,15 @@ if (az === 360) {
   // ensure left/right are defined in this scope
   const left  = getAzimuthEnd(site.lat, site.lon, az - sectorHalfAngle, range);
   const right = getAzimuthEnd(site.lat, site.lon, az + sectorHalfAngle, range);
-
+	
+	
+	
   // outer white outline
   const polyOuter = L.polygon([[site.lat, site.lon], left, right], {
     color: outerOutlineColor,
     fillOpacity: 0,
     weight: outerWeight,
-    opacity: 1
+    opacity: theme4? 0 : 1
   });
   sectorLayer.addLayer(polyOuter);
 
@@ -2441,7 +2444,7 @@ if (az === 360) {
     color: innerOutlineColor,
     fillOpacity: 0,
     weight: innerWeight,
-    opacity: 1
+    opacity: theme4? 0 : 1
   });
   sectorLayer.addLayer(polyInner);
 
@@ -2449,7 +2452,7 @@ if (az === 360) {
   const polyFill = L.polygon([[site.lat, site.lon], left, right], {
     color: color,
     fillColor: color,
-    fillOpacity: 1,
+    fillOpacity: theme4? 0.5 : 1,
     weight: 0
   });
   sectorLayer.addLayer(polyFill);
@@ -2663,8 +2666,9 @@ if (az === 360) {
   // 2) getColor
   function getColor(site, idx) {
     var theme = currentTheme;
-    if (theme === '1') {
-      return ['#003366','#990000','#CC9900'][idx % 3];
+    if (theme === '1' || theme === '4') {
+      // expanded to 4 distinct colors so up to 4 sectors show different colors
+      return ['#990000', '#003366', '#006600', '#CC9900'][idx % 4];
     }
     if (theme === '2') {
       if (!siteColors[site.siteId]) {
