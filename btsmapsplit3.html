@@ -1736,8 +1736,8 @@
     const DIST_KM = 3, BW_HALF = 100/2;
 
     // 2) Setup Dexie DB — dual-buffer (active / inactive)
-    const DB_A_NAME = 'SiteDB';
-    const DB_B_NAME = 'SiteDB2';
+    const DB_A_NAME = 'SiteDB_v2';
+    const DB_B_NAME = 'SiteDB2_v2';
 
     // create both Dexie instances (same schema)
     const dbA = new Dexie(DB_A_NAME);
@@ -1747,16 +1747,20 @@
     const dbB = new Dexie(DB_B_NAME);
     // dbB.version(1).stores({ sites: 'siteId, sitename, lon, lat, azRaw' });
     dbB.version(2).stores({ sites: '[siteId+CELLTYPE], siteId, sitename, lon, lat' });
-    // active DB selection persisted across reloads
-    let activeDbName = localStorage.getItem('activeSiteDB') || DB_A_NAME;
-    let activeDb = (activeDbName === DB_A_NAME) ? dbA : dbB;
-    let inactiveDb = (activeDb === dbA) ? dbB : dbA;
 
-    // convenience reference used by the rest of the code
-    let db = activeDb;
+	// active DB selection persisted across reloads
+	const storedActive = localStorage.getItem('activeSiteDB');
+	let activeDbName = (storedActive === DB_A_NAME || storedActive === DB_B_NAME) ? storedActive : DB_B_NAME;
 
-    // when a background load is running we will write into `targetDb` (the inactive one)
-    let targetDb = null;
+	// pick the Dexie instance by comparing names (safer than trusting object identity)
+	let activeDb = (activeDbName === DB_A_NAME) ? dbA : dbB;
+	let inactiveDb = (activeDb.name === dbA.name) ? dbB : dbA;
+
+	// convenience reference used by the rest of the code
+	let db = activeDb;
+
+	// when a background load is running we will write into `targetDb` (the inactive one)
+	let targetDb = null;
 
 
     // temporary in-memory store while background download is running
@@ -2300,19 +2304,24 @@
 
 
         // After all inserts: finalization & atomic swap
-        // Swap active DB to targetDb
-        if (targetDb) {
-          activeDb = targetDb;
-          db = activeDb;
-          inactiveDb = (activeDb === dbA) ? dbB : dbA;
+		// Swap active DB to targetDb
+		if (targetDb) {
+		  // new Dexie instance (targetDb) becomes logical active DB
+		  activeDb = targetDb;
+		  db = activeDb;
 
-          const activeName = (activeDb === dbA) ? DB_A_NAME : DB_B_NAME;
-          localStorage.setItem('activeSiteDB', activeName);
-          console.log('DataUpdate: swapped active DB to', activeName);
+		  // compute inactive DB by name (robust when instances were recreated)
+		  inactiveDb = (activeDb.name === DB_A_NAME) ? dbB : dbA;
 
-          // not using tempMemory streaming in this flow
-          usingTempMemory = false;
-        }
+		  // persist active DB name using name comparison (avoid object identity)
+		  const activeName = (activeDb.name === DB_A_NAME) ? DB_A_NAME : DB_B_NAME;
+		  localStorage.setItem('activeSiteDB', activeName);
+		  console.log('DataUpdate: swapped active DB to', activeName);
+
+		  // not using tempMemory streaming in this flow
+		  usingTempMemory = false;
+		}
+
 
         // Rebuild vectors from the freshly-written active DB
         try {
