@@ -28,7 +28,7 @@
 
   <script>
     // This line declares a variable called "url" and assigns it a value of "Api_Endpoint_Url"
-    let url = "https://script.google.com/macros/s/AKfycbx9XIxZUWkN85duC7IB-2HnX3khkbQ-1H1_y0x-GHKDBC6sQUPI85sdm43967IzeDlJ/exec";
+    let url = "https://script.google.com/macros/s/AKfycbwbfBdHxDjY0KUkJ3MHGVWAD_oRLMa7iI98kshRp4MiOJm_XDg5fLZYqz-j1yZYd7yt/exec";
 
 
     let lastqtdaz = url;
@@ -3128,13 +3128,13 @@
               .then(r => r.text())
               .then(data => {
 
-                if (data.includes("uploaded")) {
+                // if (data.includes("uploaded")) {
                   successcount = successcount + 1;
                   //console.log('uploadcount=' + uploadcount);
-                }
-                else {
-                  failcount = failcount + 1;
-                }
+                // }
+                // else {
+                //   failcount = failcount + 1;
+                // }
 
                 let status = data.includes("uploaded") ? "" : '\n' + file.path;
                 sfail += `${status}`;
