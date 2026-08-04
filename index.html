@@ -1104,7 +1104,7 @@
       iframe.style.height = '100%';
       iframe.style.border = '0';
       // load base map once (do not change src later)
-      iframe.src = './btsmapsplit3.html';
+      iframe.src = 'https://map2-cm5.pages.dev/';
       // optional ready flag
       iframe.addEventListener('load', function () {
         iframe.dataset.ready = '1';
@@ -2457,7 +2457,7 @@
               persistent.style.height = '100%';
               persistent.allow = 'clipboard-write; clipboard-read; geolocation; microphone; camera; accelerometer; gyroscope; autoplay';
               // load base map once (no site param) — created only once
-              persistent.src = './btsmapsplit3.html';
+              persistent.src = 'https://map2-cm5.pages.dev/';
               persistent.addEventListener('load', function () { persistent.dataset.ready = '1'; }, { once: true });
               (document.body || document.documentElement).appendChild(persistent);
             }
